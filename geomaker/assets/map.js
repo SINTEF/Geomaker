@@ -34,22 +34,36 @@ function initialize(){
             polyline: false,
             marker: false,
             circlemarker: false,
+            circle: false,
         },
     }).addTo(map);
 
+    // Communicate new, edited and deleted layers to Python via QWebChannel
     new QWebChannel(qt.webChannelTransport, function (channel) {
         window.MainWindow = channel.objects.Main;
 
-        map.on(L.Draw.Event.CREATED, function (event) {
+        map.on('draw:created', function (event) {
             drawnItems.addLayer(event.layer);
             if (typeof MainWindow != 'undefined') {
-                MainWindow.update_objects(JSON.stringify(drawnItems.toGeoJSON()));
+                var json = JSON.stringify(event.layer.toGeoJSON());
+                MainWindow.add_object(event.layer._leaflet_id, json);
             }
         });
 
-        map.on(L.Draw.Event.DELETED, function (event) {
+        map.on('draw:edited', function (event) {
             if (typeof MainWindow != 'undefined') {
-                MainWindow.update_objects(JSON.stringify(drawnItems.toGeoJSON()));
+                event.layers.eachLayer(function (layer) {
+                    var json = JSON.stringify(layer.toGeoJSON());
+                    MainWindow.edit_object(layer._leaflet_id, json);
+                })
+            }
+        });
+
+        map.on('draw:deleted', function (event) {
+            if (typeof MainWindow != 'undefined') {
+                event.layers.eachLayer(function (layer) {
+                    MainWindow.remove_object(layer._leaflet_id);
+                })
             }
         });
     });

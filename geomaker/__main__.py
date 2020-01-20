@@ -2,19 +2,29 @@ import functools
 from os.path import dirname, realpath, join
 import sys
 
-from PyQt5.QtWidgets import QWidget, QMainWindow
-from PyQt5 import QtCore, QtGui, QtWidgets, QtWebEngineWidgets, QtWebChannel
+from PyQt5.QtCore import QObject, QUrl, pyqtSlot
+from PyQt5.QtWebChannel import QWebChannel
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout
 
 
-class JSInterface(QtCore.QObject):
+class JSInterface(QObject):
 
     def __init__(self, main):
         super().__init__()
         self.main = main
 
-    @QtCore.pyqtSlot(str)
-    def update_objects(self, contents):
-        print(contents)
+    @pyqtSlot(int, str)
+    def add_object(self, id, contents):
+        print('add', id, contents)
+
+    @pyqtSlot(int, str)
+    def edit_object(self, id, contents):
+        print('edit', id, contents)
+
+    @pyqtSlot(int)
+    def remove_object(self, id):
+        print('remove', id)
 
 
 class MainWidget(QWidget):
@@ -24,18 +34,18 @@ class MainWidget(QWidget):
         self.create_ui()
 
     def create_ui(self):
-        vbox = QtWidgets.QVBoxLayout()
+        vbox = QVBoxLayout()
         self.setLayout(vbox)
 
-        view = QtWebEngineWidgets.QWebEngineView()
+        view = QWebEngineView()
 
         self.interface = JSInterface(self)
-        self.channel = QtWebChannel.QWebChannel()
+        self.channel = QWebChannel()
         self.channel.registerObject("Main", self.interface)
         view.page().setWebChannel(self.channel)
 
         html = join(dirname(realpath(__file__)), "assets/map.html")
-        view.setUrl(QtCore.QUrl.fromLocalFile(html))
+        view.setUrl(QUrl.fromLocalFile(html))
         vbox.addWidget(view)
 
 
@@ -48,7 +58,7 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    app = QtWidgets.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     win = MainWindow()
     win.showMaximized()
     sys.exit(app.exec_())
