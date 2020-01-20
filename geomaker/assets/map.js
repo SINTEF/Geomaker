@@ -1,6 +1,23 @@
-var map;
+var map, drawnItems;
 
-function initialize(){
+function add_object(name, points) {
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+        window.MainWindow = channel.objects.Main;
+
+        L.geoJson({
+            type: "Feature",
+            properties: {},
+            geometry: {"type": "Polygon", "coordinates": [points]},
+        }).eachLayer(function (layer) {
+            drawnItems.addLayer(layer);
+            if (typeof MainWindow != 'undefined') {
+                MainWindow.connect(name, layer._leaflet_id);
+            }
+        });
+    });
+}
+
+function initialize() {
     // Interface to OpenStreetMap and Google Maps
     var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     var osmAttrib = '&copy; <a href="http://openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -12,7 +29,7 @@ function initialize(){
 
     // Actual map object with drawn items
     map = new L.Map('map', { center: new L.LatLng(63.43011, 10.39478), zoom: 15 });
-    var drawnItems = L.featureGroup().addTo(map);
+    drawnItems = L.featureGroup().addTo(map);
 
     // Control for choosing which layers to show
     L.control.layers({

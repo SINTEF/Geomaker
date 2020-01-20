@@ -26,6 +26,10 @@ class JSInterface(QObject):
     def remove_object(self, id):
         print('remove', id)
 
+    @pyqtSlot(str, int)
+    def connect(self, str, id):
+        print('connect', str, id)
+
 
 class MainWidget(QWidget):
 
@@ -37,16 +41,22 @@ class MainWidget(QWidget):
         vbox = QVBoxLayout()
         self.setLayout(vbox)
 
-        view = QWebEngineView()
+        self.view = QWebEngineView()
+        self.view.loadFinished.connect(self.test)
 
         self.interface = JSInterface(self)
         self.channel = QWebChannel()
         self.channel.registerObject("Main", self.interface)
-        view.page().setWebChannel(self.channel)
+        self.view.page().setWebChannel(self.channel)
 
         html = join(dirname(realpath(__file__)), "assets/map.html")
-        view.setUrl(QUrl.fromLocalFile(html))
-        vbox.addWidget(view)
+        self.view.setUrl(QUrl.fromLocalFile(html))
+        vbox.addWidget(self.view)
+
+    def test(self):
+        self.view.page().runJavaScript("\
+        add_object('zomgbobomfg', [[10.288696,63.448361],[10.288696,63.46309],[10.332298,63.46309],[10.332298,63.448361],[10.288696,63.448361]]);\
+        ")
 
 
 class MainWindow(QMainWindow):
