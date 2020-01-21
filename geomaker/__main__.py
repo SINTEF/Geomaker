@@ -7,34 +7,33 @@ from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout
 
+from geomaker.db import Database
+
 
 class JSInterface(QObject):
 
-    def __init__(self, main):
+    def __init__(self, db):
         super().__init__()
-        self.main = main
+        self.db = db
 
     @pyqtSlot(int, str)
-    def add_object(self, id, contents):
-        print('add', id, contents)
+    def add_poly(self, lfid, data):
+        self.db.create(lfid, data)
 
     @pyqtSlot(int, str)
-    def edit_object(self, id, contents):
-        print('edit', id, contents)
+    def edit_poly(self, lfid, data):
+        self.db.update(lfid, data)
 
     @pyqtSlot(int)
-    def remove_object(self, id):
-        print('remove', id)
-
-    @pyqtSlot(str, int)
-    def connect(self, str, id):
-        print('connect', str, id)
+    def remove_poly(self, lfid):
+        self.db.delete(lfid)
 
 
 class MainWidget(QWidget):
 
-    def __init__(self):
+    def __init__(self, db):
         super().__init__()
+        self.db = db
         self.create_ui()
 
     def create_ui(self):
@@ -42,9 +41,9 @@ class MainWidget(QWidget):
         self.setLayout(vbox)
 
         self.view = QWebEngineView()
-        self.view.loadFinished.connect(self.test)
+        self.view.loadFinished.connect(self.add_polys)
 
-        self.interface = JSInterface(self)
+        self.interface = JSInterface(self.db)
         self.channel = QWebChannel()
         self.channel.registerObject("Main", self.interface)
         self.view.page().setWebChannel(self.channel)
@@ -53,22 +52,24 @@ class MainWidget(QWidget):
         self.view.setUrl(QUrl.fromLocalFile(html))
         vbox.addWidget(self.view)
 
-    def test(self):
-        self.view.page().runJavaScript("\
-        add_object('zomgbobomfg', [[10.288696,63.448361],[10.288696,63.46309],[10.332298,63.46309],[10.332298,63.448361],[10.288696,63.448361]]);\
-        ")
+    def add_polys(self):
+        for poly in self.db:
+            points = str(poly.points)
+            self.view.page().runJavaScript(f'add_object({points})', poly.set_lfid)
 
 
 class MainWindow(QMainWindow):
 
-    def __init__(self):
+    def __init__(self, db):
         super().__init__()
         self.setWindowTitle('GeoMaker')
-        self.setCentralWidget(MainWidget())
+        self.setCentralWidget(MainWidget(db))
 
 
 def main():
+    db = Database()
+
     app = QApplication(sys.argv)
-    win = MainWindow()
+    win = MainWindow(db)
     win.showMaximized()
     sys.exit(app.exec_())

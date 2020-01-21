@@ -1,27 +1,23 @@
 var map, drawnItems;
 
-function add_object(name, points) {
-    new QWebChannel(qt.webChannelTransport, function (channel) {
-        window.MainWindow = channel.objects.Main;
-
-        L.geoJson({
-            type: "Feature",
-            properties: {},
-            geometry: {"type": "Polygon", "coordinates": [points]},
-        }).eachLayer(function (layer) {
-            drawnItems.addLayer(layer);
-            if (typeof MainWindow != 'undefined') {
-                MainWindow.connect(name, layer._leaflet_id);
-            }
-        });
+function add_object(points) {
+    var retval;
+    L.geoJson({
+        type: "Feature",
+        properties: {},
+        geometry: {"type": "Polygon", "coordinates": [points]},
+    }).eachLayer(function (layer) {
+        drawnItems.addLayer(layer);
+        retval = layer._leaflet_id;
     });
+    return retval;
 }
 
 function initialize() {
     // Interface to OpenStreetMap and Google Maps
     var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     var osmAttrib = '&copy; <a href="http://openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-    var googleUrl = 'http://www.google.com/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}';
+    var googleUrl = 'http://www.google.com/maps/vt?lyrs=p@189&gl=cn&x={x}&y={y}&z={z}';
     var googleAttrib = '&copy; Google';
 
     var osm = L.tileLayer(osmUrl, { maxZoom: 18, attribution: osmAttrib });
@@ -33,8 +29,13 @@ function initialize() {
 
     // Control for choosing which layers to show
     L.control.layers({
-        'OpenStreetMap': osm.addTo(map),
-        'Google': google,
+        'OpenStreetMap': L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map),
+        'OpenTopoMap': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
+        'Google Roads': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=m@189&gl=cn&x={x}&y={y}&z={z}'),
+        'Google Terrain': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=p@189&gl=cn&x={x}&y={y}&z={z}'),
+        'Google Satellite': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}'),
+        'Google Hybrid': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=y@189&gl=cn&x={x}&y={y}&z={z}'),
+        'Google Shaded': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=t@189&gl=cn&x={x}&y={y}&z={z}'),
     }, {
         'Drawn areas': drawnItems,
     }, {
@@ -63,7 +64,7 @@ function initialize() {
             drawnItems.addLayer(event.layer);
             if (typeof MainWindow != 'undefined') {
                 var json = JSON.stringify(event.layer.toGeoJSON());
-                MainWindow.add_object(event.layer._leaflet_id, json);
+                MainWindow.add_poly(event.layer._leaflet_id, json);
             }
         });
 
@@ -71,7 +72,7 @@ function initialize() {
             if (typeof MainWindow != 'undefined') {
                 event.layers.eachLayer(function (layer) {
                     var json = JSON.stringify(layer.toGeoJSON());
-                    MainWindow.edit_object(layer._leaflet_id, json);
+                    MainWindow.edit_poly(layer._leaflet_id, json);
                 })
             }
         });
@@ -79,7 +80,7 @@ function initialize() {
         map.on('draw:deleted', function (event) {
             if (typeof MainWindow != 'undefined') {
                 event.layers.eachLayer(function (layer) {
-                    MainWindow.remove_object(layer._leaflet_id);
+                    MainWindow.remove_poly(layer._leaflet_id);
                 })
             }
         });

@@ -20,5 +20,6 @@ setup(
     },
     install_requires=[
         'pyqt5',
+        'xdg',
     ],
 )
