@@ -34,7 +34,6 @@ class DatabaseModel(QAbstractListModel):
 
     def __init__(self, db):
         super().__init__()
-        self.db = db
         db.notify(self)
 
     def before_insert(self, index):
@@ -51,43 +50,40 @@ class DatabaseModel(QAbstractListModel):
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
-            return QVariant(self.db[index.row()].name)
+            return QVariant(db[index.row()].name)
         return QVariant()
 
     def rowCount(self, parent):
-        return len(self.db)
+        return len(db)
 
 
 class JSInterface(QObject):
 
-    def __init__(self, main):
+    def __init__(self):
         super().__init__()
-        self.db = main.db
-        self.db_widget = main.db_widget
-        self.main = main
 
     @pyqtSlot(int, str)
     def add_poly(self, lfid, data):
-        name, accept = QInputDialog.getText(self.main, 'Name', 'Name this region:')
+        name, accept = QInputDialog.getText(main, 'Name', 'Name this region:')
         if accept:
-            self.db.create(lfid, name, data)
+            db.create(lfid, name, data)
             self.select_poly()
             self.select_poly(lfid)
 
     @pyqtSlot(int, str)
     def edit_poly(self, lfid, data):
-        self.db.update(lfid, data)
+        db.update(lfid, data)
 
     @pyqtSlot(int)
     def remove_poly(self, lfid):
-        self.db.delete(lfid)
+        db.delete(lfid)
 
     @pyqtSlot(int)
     def select_poly(self, lfid=-1):
         if lfid < 0:
-            self.db_widget.unselect()
+            db_widget.unselect()
         else:
-            self.db_widget.select(self.db.index_of(lfid=lfid))
+            db_widget.select(db.index_of(lfid=lfid))
 
 
 class PolyWidget(QWidget):
@@ -132,11 +128,9 @@ class PolyWidget(QWidget):
 
 class DatabaseWidget(QSplitter):
 
-    def __init__(self, main):
+    def __init__(self):
         super().__init__()
         self.setOrientation(Qt.Vertical)
-        self.main = main
-        self.db = main.db
         self.create_ui()
 
     def create_ui(self):
@@ -147,7 +141,7 @@ class DatabaseWidget(QSplitter):
         box.addWidget(label('<strong>Stored regions</strong>'))
 
         self.listview = QListView()
-        self.listview.setModel(DatabaseModel(self.db))
+        self.listview.setModel(DatabaseModel(db))
         self.listview.selectionModel().selectionChanged.connect(self.selection_changed)
         self.listview.doubleClicked.connect(self.list_double_clicked)
         box.addWidget(self.listview)
@@ -170,32 +164,29 @@ class DatabaseWidget(QSplitter):
         try:
             index = selected.indexes()[0]
         except IndexError:
-            self.main.set_selected()
+            main_widget.set_selected()
             self.poly.show()
             return
-        poly = self.db[index.row()]
-        self.main.set_selected(poly.lfid)
+        poly = db[index.row()]
+        main_widget.set_selected(poly.lfid)
         self.poly.show(poly)
 
     def list_double_clicked(self, item):
-        self.main.focus(self.db[item.row()].lfid)
+        main_widget.focus(db[item.row()].lfid)
 
 
 class MainWidget(QSplitter):
 
-    def __init__(self, db):
+    def __init__(self):
         super().__init__()
-        self.db = db
         self.create_ui()
 
     def create_ui(self):
-        self.db_widget = DatabaseWidget(self)
-
         # Web view
         self.view = QWebEngineView()
         self.view.loadFinished.connect(self.add_polys)
 
-        self.interface = JSInterface(self)
+        self.interface = JSInterface()
         self.channel = QWebChannel()
         self.channel.registerObject('Interface', self.interface)
         self.view.page().setWebChannel(self.channel)
@@ -204,10 +195,10 @@ class MainWidget(QSplitter):
         self.view.setUrl(QUrl.fromLocalFile(html))
 
         self.addWidget(self.view)
-        self.addWidget(self.db_widget)
+        self.addWidget(db_widget)
 
     def add_polys(self):
-        for poly in self.db:
+        for poly in db:
             points = str(poly.points)
             self.view.page().runJavaScript(f'add_object({points})', poly.set_lfid)
 
@@ -220,16 +211,20 @@ class MainWidget(QSplitter):
 
 class MainWindow(QMainWindow):
 
-    def __init__(self, db):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle('GeoMaker')
-        self.setCentralWidget(MainWidget(db))
+        self.setCentralWidget(main_widget)
 
 
 def main():
-    db = Database()
+    global db, db_widget, main_widget
 
     app = QApplication(sys.argv)
-    win = MainWindow(db)
+    db = Database()
+    db_widget = DatabaseWidget()
+    main_widget = MainWidget()
+
+    win = MainWindow()
     win.showMaximized()
     sys.exit(app.exec_())
