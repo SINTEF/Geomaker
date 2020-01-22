@@ -33,6 +33,10 @@ function select_object(lfid) {
     }
 }
 
+function focus_object(lfid) {
+    map.fitBounds(drawnItems.getLayer(lfid).getBounds());
+}
+
 function initialize() {
     // Interface to OpenStreetMap and Google Maps
     var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';

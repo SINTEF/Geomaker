@@ -98,6 +98,7 @@ class DatabaseWidget(QWidget):
         self.listview = QListView()
         self.listview.setModel(DatabaseModel(self.db))
         self.listview.selectionModel().selectionChanged.connect(self.selection_changed)
+        self.listview.doubleClicked.connect(self.list_double_clicked)
         box.addWidget(self.listview)
 
     def unselect(self):
@@ -116,6 +117,9 @@ class DatabaseWidget(QWidget):
             self.main.set_selected()
             return
         self.main.set_selected(self.db[index.row()].lfid)
+
+    def list_double_clicked(self, item):
+        self.main.focus(self.db[item.row()].lfid)
 
 
 class MainWidget(QSplitter):
@@ -150,6 +154,9 @@ class MainWidget(QSplitter):
 
     def set_selected(self, lfid=-1):
         self.view.page().runJavaScript(f'select_object({lfid})')
+
+    def focus(self, lfid):
+        self.view.page().runJavaScript(f'focus_object({lfid})')
 
 
 class MainWindow(QMainWindow):
