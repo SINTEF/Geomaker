@@ -109,6 +109,10 @@ class JSInterface(QObject):
         else:
             db_widget.select(db.index_of(lfid=lfid))
 
+    @pyqtSlot(str)
+    def print(self, s):
+        print(s)
+
 
 class PolyWidget(QWidget):
 
