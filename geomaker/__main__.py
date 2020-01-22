@@ -3,10 +3,14 @@ from os.path import dirname, realpath, join
 from operator import attrgetter
 import sys
 
-from PyQt5.QtCore import Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel
+from PyQt5.QtCore import (
+    Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel
+)
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QListView, QLabel, QInputDialog
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QListView, QLabel, QInputDialog, QSplitter
+)
 
 from geomaker.db import Database, Polygon
 
@@ -114,7 +118,7 @@ class DatabaseWidget(QWidget):
         self.main.set_selected(self.db[index.row()].lfid)
 
 
-class MainWidget(QWidget):
+class MainWidget(QSplitter):
 
     def __init__(self, db):
         super().__init__()
@@ -122,9 +126,6 @@ class MainWidget(QWidget):
         self.create_ui()
 
     def create_ui(self):
-        box = QHBoxLayout()
-        self.setLayout(box)
-
         self.db_widget = DatabaseWidget(self)
 
         # Web view
@@ -138,9 +139,9 @@ class MainWidget(QWidget):
 
         html = join(dirname(realpath(__file__)), "assets/map.html")
         self.view.setUrl(QUrl.fromLocalFile(html))
-        box.addWidget(self.view)
 
-        box.addWidget(self.db_widget)
+        self.addWidget(self.view)
+        self.addWidget(self.db_widget)
 
     def add_polys(self):
         for poly in self.db:
