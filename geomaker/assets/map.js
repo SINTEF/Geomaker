@@ -1,4 +1,12 @@
-var map, drawnItems;
+var map, drawnItems, selectedLayer;
+
+var selectedStyle = {
+    color: "#ff0000",
+};
+
+var unselectedStyle = {
+    color: "#0000ff",
+};
 
 function add_object(points) {
     var retval;
@@ -7,10 +15,22 @@ function add_object(points) {
         properties: {},
         geometry: {"type": "Polygon", "coordinates": [points]},
     }).eachLayer(function (layer) {
+        layer.setStyle(unselectedStyle);
         drawnItems.addLayer(layer);
         retval = layer._leaflet_id;
     });
     return retval;
+}
+
+function select_object(lfid) {
+    if (typeof selectedLayer != 'undefined') {
+        selectedLayer.setStyle(unselectedStyle);
+    }
+    if (lfid >= 0) {
+        var layer = drawnItems.getLayer(lfid);
+        layer.setStyle(selectedStyle);
+        selectedLayer = layer;
+    }
 }
 
 function initialize() {
@@ -58,30 +78,43 @@ function initialize() {
 
     // Communicate new, edited and deleted layers to Python via QWebChannel
     new QWebChannel(qt.webChannelTransport, function (channel) {
-        window.MainWindow = channel.objects.Main;
+        var Interface = channel.objects.Interface;
 
         map.on('draw:created', function (event) {
+            event.layer.setStyle(unselectedStyle);
             drawnItems.addLayer(event.layer);
-            if (typeof MainWindow != 'undefined') {
+            if (typeof Interface != 'undefined') {
                 var json = JSON.stringify(event.layer.toGeoJSON());
-                MainWindow.add_poly(event.layer._leaflet_id, json);
+                Interface.add_poly(event.layer._leaflet_id, json);
             }
         });
 
         map.on('draw:edited', function (event) {
-            if (typeof MainWindow != 'undefined') {
+            if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
                     var json = JSON.stringify(layer.toGeoJSON());
-                    MainWindow.edit_poly(layer._leaflet_id, json);
+                    Interface.edit_poly(layer._leaflet_id, json);
                 })
             }
         });
 
         map.on('draw:deleted', function (event) {
-            if (typeof MainWindow != 'undefined') {
+            if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
-                    MainWindow.remove_poly(layer._leaflet_id);
+                    Interface.remove_poly(layer._leaflet_id);
                 })
+            }
+        });
+
+        map.on('preclick', function (event) {
+            if (typeof Interface != 'undefined') {
+                Interface.select_poly(-1);
+            }
+        });
+
+        drawnItems.on('click', function (event) {
+            if (typeof Interface != 'undefined') {
+                Interface.select_poly(event.layer._leaflet_id);
             }
         });
     });

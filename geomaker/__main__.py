@@ -3,7 +3,7 @@ from os.path import dirname, realpath, join
 from operator import attrgetter
 import sys
 
-from PyQt5.QtCore import Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant
+from PyQt5.QtCore import Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QListView, QLabel, QInputDialog
@@ -47,9 +47,10 @@ class DatabaseModel(QAbstractListModel):
 
 class JSInterface(QObject):
 
-    def __init__(self, db, main):
+    def __init__(self, main):
         super().__init__()
-        self.db = db
+        self.db = main.db
+        self.db_widget = main.db_widget
         self.main = main
 
     @pyqtSlot(int, str)
@@ -66,12 +67,20 @@ class JSInterface(QObject):
     def remove_poly(self, lfid):
         self.db.delete(lfid)
 
+    @pyqtSlot(int)
+    def select_poly(self, lfid):
+        if lfid < 0:
+            self.db_widget.unselect()
+        else:
+            self.db_widget.select(self.db.index_of(lfid=lfid))
+
 
 class DatabaseWidget(QWidget):
 
-    def __init__(self, db):
+    def __init__(self, main):
         super().__init__()
-        self.db = db
+        self.main = main
+        self.db = main.db
         self.create_ui()
 
     def create_ui(self):
@@ -80,9 +89,27 @@ class DatabaseWidget(QWidget):
 
         box.addWidget(label('<strong>Stored regions</strong>'))
 
-        listview = QListView()
-        listview.setModel(DatabaseModel(self.db))
-        box.addWidget(listview)
+        self.listview = QListView()
+        self.listview.setModel(DatabaseModel(self.db))
+        self.listview.selectionModel().selectionChanged.connect(self.selection_changed)
+        box.addWidget(self.listview)
+
+    def unselect(self):
+        selection_model = self.listview.selectionModel()
+        selection_model.select(QModelIndex(), QItemSelectionModel.SelectCurrent)
+
+    def select(self, row):
+        selection_model = self.listview.selectionModel()
+        index = self.listview.model().index(row, 0, QModelIndex())
+        selection_model.select(index, QItemSelectionModel.SelectCurrent)
+
+    def selection_changed(self, selected, deselected):
+        try:
+            index = selected.indexes()[0]
+        except IndexError:
+            self.main.set_selected()
+            return
+        self.main.set_selected(self.db[index.row()].lfid)
 
 
 class MainWidget(QWidget):
@@ -96,25 +123,30 @@ class MainWidget(QWidget):
         box = QHBoxLayout()
         self.setLayout(box)
 
+        self.db_widget = DatabaseWidget(self)
+
         # Web view
         self.view = QWebEngineView()
         self.view.loadFinished.connect(self.add_polys)
 
-        self.interface = JSInterface(self.db, self)
+        self.interface = JSInterface(self)
         self.channel = QWebChannel()
-        self.channel.registerObject("Main", self.interface)
+        self.channel.registerObject('Interface', self.interface)
         self.view.page().setWebChannel(self.channel)
 
         html = join(dirname(realpath(__file__)), "assets/map.html")
         self.view.setUrl(QUrl.fromLocalFile(html))
         box.addWidget(self.view)
 
-        box.addWidget(DatabaseWidget(self.db))
+        box.addWidget(self.db_widget)
 
     def add_polys(self):
         for poly in self.db:
             points = str(poly.points)
             self.view.page().runJavaScript(f'add_object({points})', poly.set_lfid)
+
+    def set_selected(self, lfid=-1):
+        self.view.page().runJavaScript(f'select_object({lfid})')
 
 
 class MainWindow(QMainWindow):
