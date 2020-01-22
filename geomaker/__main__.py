@@ -55,13 +55,29 @@ class DatabaseModel(QAbstractListModel):
     def after_delete(self):
         self.endRemoveRows()
 
+    def before_reset(self, poly):
+        interface.select_poly(-1)
+        self._selected = poly
+        self.beginResetModel()
+
+    def after_reset(self):
+        self.endResetModel()
+        interface.select_poly(self._selected.lfid)
+
     def data(self, index, role):
         if role == Qt.DisplayRole:
             return QVariant(db[index.row()].name)
         return QVariant()
 
+    def setData(self, index, data, role):
+        db.update_name(index.row(), data)
+        return True
+
     def rowCount(self, parent):
         return len(db)
+
+    def flags(self, index):
+        return super().flags(index) | Qt.ItemIsEditable
 
 
 class JSInterface(QObject):
@@ -156,6 +172,7 @@ class DatabaseWidget(QSplitter):
         self.listview.setModel(DatabaseModel(db))
         self.listview.selectionModel().selectionChanged.connect(self.selection_changed)
         self.listview.doubleClicked.connect(self.list_double_clicked)
+        self.listview.setEditTriggers(QListView.EditKeyPressed | QListView.SelectedClicked)
         box.addWidget(self.listview)
 
         self.addWidget(top)
@@ -197,9 +214,8 @@ class MainWidget(QSplitter):
         self.view = QWebEngineView()
         self.view.loadFinished.connect(self.add_polys)
 
-        self.interface = JSInterface()
         self.channel = QWebChannel()
-        self.channel.registerObject('Interface', self.interface)
+        self.channel.registerObject('Interface', interface)
         self.view.page().setWebChannel(self.channel)
 
         html = join(dirname(realpath(__file__)), "assets/map.html")
@@ -229,11 +245,12 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    global db, db_widget, main_widget
+    global db, db_widget, interface, main_widget
 
     app = QApplication(sys.argv)
     db = Database()
     db_widget = DatabaseWidget()
+    interface = JSInterface()
     main_widget = MainWidget()
 
     win = MainWindow()
