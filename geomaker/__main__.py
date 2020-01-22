@@ -58,6 +58,8 @@ class JSInterface(QObject):
         name, accept = QInputDialog.getText(self.main, 'Name', 'Name this region:')
         if accept:
             self.db.create(lfid, name, data)
+            self.select_poly()
+            self.select_poly(lfid)
 
     @pyqtSlot(int, str)
     def edit_poly(self, lfid, data):
@@ -68,7 +70,7 @@ class JSInterface(QObject):
         self.db.delete(lfid)
 
     @pyqtSlot(int)
-    def select_poly(self, lfid):
+    def select_poly(self, lfid=-1):
         if lfid < 0:
             self.db_widget.unselect()
         else:

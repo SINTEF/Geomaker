@@ -106,7 +106,7 @@ function initialize() {
             }
         });
 
-        map.on('preclick', function (event) {
+        map.on('mouseup', function (event) {
             if (typeof Interface != 'undefined') {
                 Interface.select_poly(-1);
             }
