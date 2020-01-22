@@ -9,7 +9,8 @@ from PyQt5.QtCore import (
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter
+    QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter,
+    QFrame
 )
 
 from geomaker.db import Database, Polygon
@@ -19,6 +20,12 @@ def label(text):
     label = QLabel()
     label.setText(text)
     return label
+
+
+def frame(orientation):
+    frame = QFrame()
+    frame.setFrameShape(orientation)
+    return frame
 
 
 def angle_to_degrees(angle, directions):
@@ -64,7 +71,7 @@ class JSInterface(QObject):
 
     @pyqtSlot(int, str)
     def add_poly(self, lfid, data):
-        name, accept = QInputDialog.getText(main, 'Name', 'Name this region:')
+        name, accept = QInputDialog.getText(main_widget, 'Name', 'Name this region:')
         if accept:
             db.create(lfid, name, data)
             self.select_poly()
@@ -95,25 +102,28 @@ class PolyWidget(QWidget):
         self.create_ui()
 
     def _add_row(self, attrname, title, widget):
-        self._rows += 1
         self.box.addWidget(label(title), self._rows, 0, Qt.AlignRight)
-        self.box.addWidget(widget, self._rows, 1, Qt.AlignLeft)
+        self.box.addWidget(widget, self._rows, 2, Qt.AlignLeft)
         setattr(self, attrname, widget)
+        self._rows += 1
 
     def create_ui(self):
         self.box = QGridLayout()
         self.setLayout(self.box)
-        self._rows = 0
 
         self.name = label('')
-        self.box.addWidget(self.name, 0, 0, 1, 2, Qt.AlignCenter)
+        self.box.addWidget(self.name, 0, 0, 1, 3, Qt.AlignCenter)
+        self.box.addWidget(frame(QFrame.HLine), 1, 0, 1, 3)
 
+        self._rows = 2
         self._add_row('west', 'West', label(''))
         self._add_row('east', 'East', label(''))
         self._add_row('south', 'South', label(''))
         self._add_row('north', 'North', label(''))
+        self._add_row('area', 'Area', label(''))
 
-        self.box.setRowStretch(self._rows + 1, 1)
+        self.box.addWidget(frame(QFrame.VLine), 2, 1, self._rows - 2, 1)
+        self.box.setRowStretch(self._rows, 1)
 
     def show(self, poly=None):
         if poly is None:
@@ -125,6 +135,7 @@ class PolyWidget(QWidget):
         self.east.setText(f'{poly.east:.4f} ({angle_to_degrees(poly.east, "WE")})')
         self.south.setText(f'{poly.south:.4f} ({angle_to_degrees(poly.south, "SN")})')
         self.north.setText(f'{poly.north:.4f} ({angle_to_degrees(poly.north, "SN")})')
+        self.area.setText(f'{poly.area/1000000:.3f} km<sup>2</sup>')
 
 
 class DatabaseWidget(QSplitter):
