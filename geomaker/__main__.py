@@ -73,6 +73,7 @@ class JSInterface(QObject):
     @pyqtSlot(int, str)
     def edit_poly(self, lfid, data):
         db.update(lfid, data)
+        db_widget.select(db.index_of(lfid=lfid))
 
     @pyqtSlot(int)
     def remove_poly(self, lfid):
@@ -182,7 +183,6 @@ class MainWidget(QSplitter):
         self.create_ui()
 
     def create_ui(self):
-        # Web view
         self.view = QWebEngineView()
         self.view.loadFinished.connect(self.add_polys)
 
