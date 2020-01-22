@@ -25,6 +25,7 @@ function add_object(points) {
 function select_object(lfid) {
     if (typeof selectedLayer != 'undefined') {
         selectedLayer.setStyle(unselectedStyle);
+        selectedLayer = undefined;
     }
     if (lfid >= 0) {
         var layer = drawnItems.getLayer(lfid);
@@ -110,8 +111,13 @@ function initialize() {
             }
         });
 
+        var moving = false;
+
+        map.on('movestart', function (event) { moving = true; })
+        map.on('moveend', function (event) { moving = false; })
+
         map.on('mouseup', function (event) {
-            if (typeof Interface != 'undefined') {
+            if (typeof Interface != 'undefined' && !moving) {
                 Interface.select_poly(-1);
             }
         });
