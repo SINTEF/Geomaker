@@ -127,19 +127,26 @@ function initialize() {
         });
 
         var moving = false;
+        var deselect = false;
 
         map.on('movestart', function (event) { moving = true; })
         map.on('moveend', function (event) { moving = false; })
 
         map.on('mouseup', function (event) {
             if (typeof Interface != 'undefined' && !moving) {
-                Interface.select_poly(-1);
+                deselect = true;
+                setTimeout(function () {
+                    if (deselect) {
+                        Interface.select_poly(-1);
+                    }
+                }, 10);
             }
         });
 
         drawnItems.on('click', function (event) {
             if (typeof Interface != 'undefined') {
                 Interface.select_poly(event.layer._leaflet_id);
+                deselect = false;
             }
         });
     });
