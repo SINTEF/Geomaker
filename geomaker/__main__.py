@@ -10,10 +10,10 @@ from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter,
-    QFrame, QMessageBox
+    QFrame, QMessageBox, QComboBox, QPushButton
 )
 
-from geomaker.db import Database, Polygon, Config
+from geomaker.db import PROJECTS, Database, Polygon, Config, Status
 
 
 def label(text):
@@ -118,6 +118,7 @@ class PolyWidget(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.poly = None
         self.setVisible(False)
         self.create_ui()
 
@@ -135,6 +136,7 @@ class PolyWidget(QWidget):
         if attrname is not None:
             setattr(self, attrname, widget)
         self._rows += 1
+        return self._rows
 
     def create_ui(self):
         self.box = QGridLayout()
@@ -142,18 +144,31 @@ class PolyWidget(QWidget):
 
         self._add_row(label(''), attrname='name', align=Qt.AlignCenter)
         self._add_row(frame(QFrame.HLine))
-        self._add_row(label(''), label('West'), 'west')
-        self._add_row(label(''), label('East'), 'east')
-        self._add_row(label(''), label('South'), 'south')
-        self._add_row(label(''), label('North'), 'north')
-        self._add_row(label(''), label('Area'), 'area')
-        self.box.addWidget(frame(QFrame.VLine), 2, 1, self._rows - 2, 1)
+        self._add_row(label(''), title=label('West'), attrname='west')
+        self._add_row(label(''), title=label('East'), attrname='east')
+        self._add_row(label(''), title=label('South'), attrname='south')
+        self._add_row(label(''), title=label('North'), attrname='north')
+        nrows_a = self._add_row(label(''), title=label('Area'), attrname='area')
+        self.box.addWidget(frame(QFrame.VLine), 2, 1, nrows_a - 2, 1)
 
         self._add_row(frame(QFrame.HLine))
 
-        self.box.setRowStretch(self._rows, 1)
+        combobox = QComboBox()
+        combobox.addItems(project for _, project in PROJECTS)
+        combobox.currentIndexChanged.connect(self.update_project)
+        self._add_row(combobox, attrname='project')
+        nrows_b = self._add_row(label(''), title=label('Status'), attrname='status')
+
+        button = QPushButton('')
+        button.clicked.connect(self.act)
+        self._add_row(button, attrname='action', align=Qt.AlignCenter)
+
+        self.box.addWidget(frame(QFrame.VLine), nrows_b - 1, 1, nrows_b - nrows_a - 2, 1)
+        self.box.setRowStretch(nrows_b + 1, 1)
 
     def show(self, poly=None):
+        self.poly = poly
+
         if poly is None:
             self.setVisible(False)
             return
@@ -164,6 +179,34 @@ class PolyWidget(QWidget):
         self.south.setText(f'{poly.south:.4f} ({angle_to_degrees(poly.south, "SN")})')
         self.north.setText(f'{poly.north:.4f} ({angle_to_degrees(poly.north, "SN")})')
         self.area.setText(f'{poly.area/1000000:.3f} km<sup>2</sup>')
+
+        self.update_project()
+
+    def update_project(self):
+        if self.poly is None:
+            return
+        project, _ = PROJECTS[self.project.currentIndex()]
+        status = self.poly.status(project)
+
+        self.status.setText(status.desc())
+        self.action.setText(status.action())
+
+    def act(self):
+        if self.poly is None:
+            return
+        project, _ = PROJECTS[self.project.currentIndex()]
+        status = self.poly.status(project)
+
+        if status == Status.Nothing or status == Status.ExportErrored:
+            self.poly.export(project, config['email'])
+        elif status == Status.ExportWaiting or status == Status.ExportProcessing:
+            self.poly.refresh(project)
+        elif status == Status.DownloadReady:
+            self.poly.download(project)
+
+        self.update_project()
+        if self.poly.status(project) == Status.ExportErrored:
+            QMessageBox.critical(self, 'Error', self.poly.error(project))
 
 
 class DatabaseWidget(QSplitter):

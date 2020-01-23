@@ -1,9 +1,12 @@
+from enum import IntEnum
 from operator import methodcaller
 import json
 import hashlib
 
 from area import area as geojson_area
+import requests
 import toml
+from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
 
@@ -17,6 +20,61 @@ for d in [DATA_ROOT, POLYGON_ROOT]:
 
 # Config file
 CONFIG_FILE = XDG_CONFIG_HOME / 'geomaker.toml'
+
+# Projects
+PROJECTS = [
+    ('DTM50', 'Terrain model (50 m)'),
+    ('DTM10', 'Terrain model (10 m)'),
+    ('DTM1',  'Terrain model (1 m)'),
+    ('DOM50', 'Object model (50 m)'),
+    ('DOM10', 'Object model (10 m)'),
+    ('DOM1',  'Object model (1 m)'),
+]
+
+for project, _ in PROJECTS:
+    proj_dir = DATA_ROOT / project
+    if not proj_dir.exists():
+        proj_dir.mkdir()
+
+
+class Status(IntEnum):
+    Nothing = 0
+    ExportErrored = 1
+    ExportWaiting = 2
+    ExportProcessing = 3
+    DownloadReady = 4
+    Downloaded = 5
+
+    def desc(self):
+        return {
+            Status.Nothing: 'No export request made',
+            Status.ExportErrored: 'Export request errored',
+            Status.ExportWaiting: 'Waiting for export to start',
+            Status.ExportProcessing: 'Waiting for export to finish',
+            Status.DownloadReady: 'Data file ready to download',
+            Status.Downloaded: 'Data file available locally',
+        }[self]
+
+    def action(self):
+        return {
+            Status.Nothing: 'Export',
+            Status.ExportErrored: 'Export',
+            Status.ExportWaiting: 'Refresh',
+            Status.ExportProcessing: 'Refresh',
+            Status.DownloadReady: 'Download',
+            Status.Downloaded: 'View',
+        }[self]
+
+
+def make_request(endpoint, params):
+    params = json.dumps(params)
+    url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
+    print(url)
+    response = requests.get(url)
+    print(response)
+    if response.status_code != 200:
+        return response.status_code, None
+    return response.status_code, json.loads(response.text)
 
 
 def unicase_name(poly):
@@ -75,6 +133,18 @@ class Polygon:
         if write:
             self.write()
 
+    @classmethod
+    def from_file(cls, path, **kwargs):
+        with open(path, 'r') as f:
+            data = json.load(f)
+        for proj in data.setdefault('files', {}).values():
+            proj['status'] = Status(proj['status'])
+        return cls(data, dbid=path.stem, write=False, **kwargs)
+
+    @classmethod
+    def from_dbid(cls, dbid, **kwargs):
+        return cls.from_file(dbid + '.json', write=False, **kwargs)
+
     @property
     def filename(self):
         return POLYGON_ROOT.joinpath(self.dbid + '.json')
@@ -89,7 +159,7 @@ class Polygon:
 
     @property
     def name(self):
-        return self.data.get('name', self.dbid)
+        return self.data.setdefault('name', self.dbid)
 
     @name.setter
     def name(self, value):
@@ -116,6 +186,10 @@ class Polygon:
     def area(self):
         return geojson_area(self.geojson['geometry'])
 
+    @property
+    def files(self):
+        return self.data.setdefault('files', {})
+
     def set_lfid(self, lfid):
         if self.lfid is not None:
             self.db.unlink_lfid(self)
@@ -134,25 +208,83 @@ class Polygon:
     def delete(self):
         self.filename.unlink()
 
-    @classmethod
-    def from_file(cls, path, **kwargs):
-        with open(path, 'r') as f:
-            data = json.load(f)
-        return cls(data, dbid=path.stem, write=False, **kwargs)
+    def _project(self, project):
+        return self.files.setdefault(project, {'status': Status.Nothing})
 
-    @classmethod
-    def from_dbid(cls, dbid, **kwargs):
-        return cls.from_file(dbid + '.json', write=False, **kwargs)
+    def status(self, project):
+        return self._project(project)['status']
 
-    def request(self, project, email):
-        coords = ';'.join(f'{lon},{lat}' for lon, lat in self.points)
+    def error(self, project):
+        return self._project(project).get('error', None) or 'Unknown error occured'
+
+    def datafile(self, project):
+        return DATA_ROOT / project / (self.dbid + '.zip')
+
+    def export(self, project, email):
+        # Convert points to UTM 33N integers
+        coords = [from_latlon(lat, lon, force_zone_number=33, force_zone_letter='N') for lon, lat in self.points]
+        coords = [(int(x), int(y)) for x, y, *_ in coords]
+        coords = ';'.join(f'{x},{y}' for x, y in coords)
+
         params = {
             'CopyEmail': email,
             'Projects': project,
             'CoordInput': coords,
+            'InputWkid': 25833, # ETRS89 / UTM zone 33N
             'Format': 5,        # GeoTIFF
             'NHM': 1,           # National altitude models
+            'ProjectMerge': 1,  # Don't split up data
         }
+
+        code, response = make_request('startExport', params)
+        proj = self._project(project)
+        if response is None:
+            proj['status'] = Status.ExportErrored
+            proj['error'] = f'HTTP code {code}'
+        elif 'Error' in response:
+            proj['status'] = Status.ExportErrored
+            proj['error'] = response['Error']
+        elif not response.get('Success', False):
+            proj['status'] = Status.ExportErrored
+            proj['error'] = None
+        else:
+            proj['status'] = Status.ExportWaiting
+            proj['jobid'] = response.get('JobID', -1)
+
+        self.write()
+
+    def refresh(self, project):
+        proj = self._project(project)
+        code, response = make_request('exportStatus', {'JobID': proj['jobid']})
+
+        if response is None:
+            proj['status'] = Status.ExportErrored
+            proj['error'] = f'HTTP code {code}'
+        elif response['Status'] == 'new':
+            proj['status'] = Status.ExportWaiting
+        elif response['Status'] == 'processing':
+            proj['status'] = Status.ExportProcessing
+        elif response['Status'] == 'complete' and response['Finished']:
+            proj['status'] = Status.DownloadReady
+            proj['url'] = response['Url']
+
+        self.write()
+
+    def download(self, project):
+        proj = self._project(project)
+        if not 'url' in proj:
+            proj['status'] = Status.ExportErrored
+            proj['error'] = None
+
+        response = requests.get(proj['url'])
+        if response.status_code != 200:
+            proj['status'] = Status.ExportErrored
+            proj['error'] = f'HTTP code {response.status_code}'
+
+        with open(self.datafile(project), 'wb') as f:
+            f.write(response.content)
+
+        proj['status'] = Status.Downloaded
 
 
 class Database:
