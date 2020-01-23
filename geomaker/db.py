@@ -54,8 +54,12 @@ class Polygon:
         return POLYGON_ROOT.joinpath(self.dbid + '.json')
 
     @property
+    def geojson(self):
+        return self.data['data']
+
+    @property
     def points(self):
-        return self.data['geometry']['coordinates'][0]
+        return self.geojson['geometry']['coordinates'][0]
 
     @property
     def name(self):
@@ -84,11 +88,7 @@ class Polygon:
 
     @property
     def area(self):
-        return geojson_area(self.data['geometry'])
-
-    def _copy_special_keys(self, data):
-        for key in ['name']:
-            data[key] = self.data[key]
+        return geojson_area(self.geojson['geometry'])
 
     def set_lfid(self, lfid):
         if self.lfid is not None:
@@ -102,8 +102,7 @@ class Polygon:
             json.dump(self.data, f)
 
     def update(self, data):
-        self._copy_special_keys(data)
-        self.data = data
+        self.data['data'] = data
         self.write()
 
     def delete(self):
@@ -183,11 +182,11 @@ class Database:
     def create(self, lfid, name, data):
         dbid = hashlib.sha256(data.encode('utf-8')).hexdigest()
         data = json.loads(data)
-        data['name'] = name
 
-        poly = Polygon(data, dbid=dbid, lfid=lfid, db=self)
+        poly = Polygon({'data': data}, dbid=dbid, lfid=lfid, db=self)
+        poly.name = name
+
         index = bisect_right(self.data, poly, key=unicase_name)
-
         self.message('before_insert', index)
         self.data.insert(index, poly)
         self.message('after_insert')
