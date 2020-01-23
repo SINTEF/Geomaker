@@ -261,6 +261,10 @@ class Polygon:
 
     def delete(self):
         self.filename.unlink()
+        for project, _ in PROJECTS:
+            datafile = self.datafile(project)
+            if datafile.exists():
+                datafile.unlink()
 
     def _project(self, project):
         return self.files.setdefault(project, {'status': Status.Nothing})
