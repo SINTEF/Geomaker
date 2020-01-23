@@ -200,7 +200,6 @@ class PolyWidget(QWidget):
             w = self.image.width()
             h = max(w, int(w / pixmap.width() * pixmap.height()))
             self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-
         else:
             self.image.setPixmap(QPixmap())
 

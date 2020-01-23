@@ -160,12 +160,12 @@ class GeoTIFF:
         with ZipFile(self.filename, 'r') as z:
             if 'thumbnail.png' in z.namelist():
                 return
-        data = self.thumb_dataset
+        data = self.dataset
         with tempfile.NamedTemporaryFile(suffix='.png') as tfile:
             img = data.ReadAsArray()
             lo = max(0, min(img.flat))
             hi = max(img.flat)
-            gdal.Translate(tfile.name, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]])
+            gdal.Translate(tfile.name, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]], width=640, height=0)
             with ZipFile(self.filename, 'a') as z:
                 z.write(tfile.name, 'thumbnail.png')
 
