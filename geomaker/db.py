@@ -1,9 +1,15 @@
 from enum import IntEnum
+from functools import lru_cache
+from contextlib import contextmanager
 from operator import methodcaller
 import json
 import hashlib
+import tempfile
+from pathlib import Path
+from zipfile import ZipFile
 
 from area import area as geojson_area
+from osgeo import gdal
 import requests
 import toml
 from utm import from_latlon
@@ -69,9 +75,7 @@ class Status(IntEnum):
 def make_request(endpoint, params):
     params = json.dumps(params)
     url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
-    print(url)
     response = requests.get(url)
-    print(response)
     if response.status_code != 200:
         return response.status_code, None
     return response.status_code, json.loads(response.text)
@@ -118,6 +122,47 @@ class Config(dict):
     def write(self):
         with open(CONFIG_FILE, 'w') as f:
             toml.dump(self, f)
+
+
+class GeoTIFF:
+
+    def __init__(self, filename, project):
+        self.filename = filename
+        self.project = project.lower()
+
+    @contextmanager
+    def _temp_extract(self, filename):
+        with tempfile.NamedTemporaryFile(delete=False) as tfile:
+            with ZipFile(self.filename, 'r') as z:
+                with z.open(filename, 'r') as tiff:
+                    tfile.write(tiff.read())
+        yield tfile.name
+        Path(tfile.name).unlink()
+
+    @property
+    @lru_cache(maxsize=1)
+    def dataset(self):
+        with self._temp_extract(f'{self.project}/data/{self.project}.tif') as filename:
+            return gdal.Open(filename)
+
+    @property
+    @lru_cache(maxsize=1)
+    def thumb_dataset(self):
+        with self._temp_extract(f'{self.project}/data/{self.project}.tif.ovr') as filename:
+            return gdal.Open(filename)
+
+    def ensure_thumbnail(self):
+        with ZipFile(self.filename, 'r') as z:
+            if 'thumbnail.png' in z.namelist():
+                return
+        data = self.thumb_dataset
+        with tempfile.NamedTemporaryFile(suffix='.png') as tfile:
+            img = data.ReadAsArray()
+            lo = max(0, min(img.flat))
+            hi = max(img.flat)
+            gdal.Translate(tfile.name, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]])
+            with ZipFile(self.filename, 'a') as z:
+                z.write(tfile.name, 'thumbnail.png')
 
 
 class Polygon:
@@ -267,6 +312,7 @@ class Polygon:
         elif response['Status'] == 'complete' and response['Finished']:
             proj['status'] = Status.DownloadReady
             proj['url'] = response['Url']
+            GeoTIFF(self.datafile(project)).ensure_thumbnail()
 
         self.write()
 
@@ -285,6 +331,8 @@ class Polygon:
             f.write(response.content)
 
         proj['status'] = Status.Downloaded
+
+        self.write()
 
 
 class Database:
