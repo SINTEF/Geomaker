@@ -10,10 +10,10 @@ from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter,
-    QFrame
+    QFrame, QMessageBox
 )
 
-from geomaker.db import Database, Polygon
+from geomaker.db import Database, Polygon, Config
 
 
 def label(text):
@@ -255,9 +255,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('GeoMaker')
         self.setCentralWidget(main_widget)
 
+    def showMaximized(self):
+        super().showMaximized()
+        config.verify(self)
+
+    def message(self, title, msg):
+        QMessageBox.information(self, title, msg)
+
+    def query_str(self, title, msg):
+        name, _ = QInputDialog.getText(self, title, msg)
+        return name
+
 
 def main():
-    global db, db_widget, interface, main_widget
+    global config, db, db_widget, interface, main_widget
+
+    config = Config()
 
     app = QApplication(sys.argv)
     db = Database()

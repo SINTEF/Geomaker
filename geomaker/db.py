@@ -3,7 +3,8 @@ import json
 import hashlib
 
 from area import area as geojson_area
-from xdg import XDG_DATA_HOME
+import toml
+from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
 
 # Create database if it does not exist
@@ -13,6 +14,9 @@ POLYGON_ROOT = DATA_ROOT / 'polygons'
 for d in [DATA_ROOT, POLYGON_ROOT]:
     if not d.exists():
         d.mkdir()
+
+# Config file
+CONFIG_FILE = XDG_CONFIG_HOME / 'geomaker.toml'
 
 
 def unicase_name(poly):
@@ -34,6 +38,28 @@ def bisect_right(a, x, lo=0, hi=None, key=(lambda x: x)):
         else:
             lo = mid+1
     return lo
+
+
+class Config(dict):
+
+    def __init__(self):
+        super().__init__()
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r') as f:
+                self.update(toml.load(f))
+
+    def verify(self, querier):
+        if not 'email' in self:
+            querier.message(
+                'E-mail address',
+                'An e-mail address must be configured to make requests to the Norwegian Mapping Authority',
+            )
+            self['email'] = querier.query_str('E-mail address', 'E-mail:')
+        self.write()
+
+    def write(self):
+        with open(CONFIG_FILE, 'w') as f:
+            toml.dump(self, f)
 
 
 class Polygon:
@@ -117,6 +143,16 @@ class Polygon:
     @classmethod
     def from_dbid(cls, dbid, **kwargs):
         return cls.from_file(dbid + '.json', write=False, **kwargs)
+
+    def request(self, project, email):
+        coords = ';'.join(f'{lon},{lat}' for lon, lat in self.points)
+        params = {
+            'CopyEmail': email,
+            'Projects': project,
+            'CoordInput': coords,
+            'Format': 5,        # GeoTIFF
+            'NHM': 1,           # National altitude models
+        }
 
 
 class Database:
