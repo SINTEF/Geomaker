@@ -151,6 +151,11 @@ class GeoTIFF:
         with self._temp_extract(f'{self.project}/data/{self.project}.tif.ovr') as filename:
             return gdal.Open(filename)
 
+    def thumbnail(self):
+        with ZipFile(self.filename, 'r') as z:
+            with z.open('thumbnail.png', 'r') as thumb:
+                return thumb.read()
+
     def ensure_thumbnail(self):
         with ZipFile(self.filename, 'r') as z:
             if 'thumbnail.png' in z.namelist():
@@ -235,6 +240,10 @@ class Polygon:
     def files(self):
         return self.data.setdefault('files', {})
 
+    @lru_cache(maxsize=3)
+    def geotiff(self, project):
+        return GeoTIFF(self.datafile(project), project)
+
     def set_lfid(self, lfid):
         if self.lfid is not None:
             self.db.unlink_lfid(self)
@@ -312,7 +321,6 @@ class Polygon:
         elif response['Status'] == 'complete' and response['Finished']:
             proj['status'] = Status.DownloadReady
             proj['url'] = response['Url']
-            GeoTIFF(self.datafile(project)).ensure_thumbnail()
 
         self.write()
 
@@ -332,6 +340,7 @@ class Polygon:
 
         proj['status'] = Status.Downloaded
 
+        self.geotiff(project).ensure_thumbnail()
         self.write()
 
 

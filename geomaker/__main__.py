@@ -6,6 +6,7 @@ import sys
 from PyQt5.QtCore import (
     Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel
 )
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
@@ -163,8 +164,10 @@ class PolyWidget(QWidget):
         button.clicked.connect(self.act)
         self._add_row(button, attrname='action', align=Qt.AlignCenter)
 
+        self._add_row(label(''), attrname='image')
+
         self.box.addWidget(frame(QFrame.VLine), nrows_b - 1, 1, nrows_b - nrows_a - 2, 1)
-        self.box.setRowStretch(nrows_b + 1, 1)
+        self.box.setRowStretch(nrows_b + 2, 1)
 
     def show(self, poly=None):
         self.poly = poly
@@ -190,6 +193,16 @@ class PolyWidget(QWidget):
 
         self.status.setText(status.desc())
         self.action.setText(status.action())
+
+        if status == Status.Downloaded:
+            pixmap = QPixmap()
+            pixmap.loadFromData(self.poly.geotiff(project).thumbnail())
+            w = self.image.width()
+            h = max(w, int(w / pixmap.width() * pixmap.height()))
+            self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+        else:
+            self.image.setPixmap(QPixmap())
 
     def act(self):
         if self.poly is None:
