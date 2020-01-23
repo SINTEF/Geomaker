@@ -100,7 +100,11 @@ function initialize() {
     new QWebChannel(qt.webChannelTransport, function (channel) {
         var Interface = channel.objects.Interface;
 
+        var moving = false;
+        var deselect = false;
+
         map.on('draw:created', function (event) {
+            deselect = false;
             event.layer.setStyle(unselectedStyle);
             drawnItems.addLayer(event.layer);
             if (typeof Interface != 'undefined') {
@@ -110,6 +114,7 @@ function initialize() {
         });
 
         map.on('draw:edited', function (event) {
+            deselect = false;
             if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
                     var json = JSON.stringify(layer.toGeoJSON());
@@ -125,9 +130,6 @@ function initialize() {
                 })
             }
         });
-
-        var moving = false;
-        var deselect = false;
 
         map.on('movestart', function (event) { moving = true; })
         map.on('moveend', function (event) { moving = false; })
