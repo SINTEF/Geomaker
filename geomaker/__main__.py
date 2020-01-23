@@ -121,28 +121,36 @@ class PolyWidget(QWidget):
         self.setVisible(False)
         self.create_ui()
 
-    def _add_row(self, attrname, title, widget):
-        self.box.addWidget(label(title), self._rows, 0, Qt.AlignRight)
-        self.box.addWidget(widget, self._rows, 2, Qt.AlignLeft)
-        setattr(self, attrname, widget)
+    def _add_row(self, widget, title=None, attrname=None, align=None):
+        if not hasattr(self, '_rows'):
+            self._rows = 0
+        if title is None:
+            if align is not None:
+                self.box.addWidget(widget, self._rows, 0, 1, 3, align)
+            else:
+                self.box.addWidget(widget, self._rows, 0, 1, 3)
+        else:
+            self.box.addWidget(title, self._rows, 0, Qt.AlignRight)
+            self.box.addWidget(widget, self._rows, 2, Qt.AlignLeft)
+        if attrname is not None:
+            setattr(self, attrname, widget)
         self._rows += 1
 
     def create_ui(self):
         self.box = QGridLayout()
         self.setLayout(self.box)
 
-        self.name = label('')
-        self.box.addWidget(self.name, 0, 0, 1, 3, Qt.AlignCenter)
-        self.box.addWidget(frame(QFrame.HLine), 1, 0, 1, 3)
-
-        self._rows = 2
-        self._add_row('west', 'West', label(''))
-        self._add_row('east', 'East', label(''))
-        self._add_row('south', 'South', label(''))
-        self._add_row('north', 'North', label(''))
-        self._add_row('area', 'Area', label(''))
-
+        self._add_row(label(''), attrname='name', align=Qt.AlignCenter)
+        self._add_row(frame(QFrame.HLine))
+        self._add_row(label(''), label('West'), 'west')
+        self._add_row(label(''), label('East'), 'east')
+        self._add_row(label(''), label('South'), 'south')
+        self._add_row(label(''), label('North'), 'north')
+        self._add_row(label(''), label('Area'), 'area')
         self.box.addWidget(frame(QFrame.VLine), 2, 1, self._rows - 2, 1)
+
+        self._add_row(frame(QFrame.HLine))
+
         self.box.setRowStretch(self._rows, 1)
 
     def show(self, poly=None):
