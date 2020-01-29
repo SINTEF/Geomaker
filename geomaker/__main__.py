@@ -217,8 +217,10 @@ class PolyWidget(QWidget):
         self.tiles.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.tiles.linkActivated.connect(self.dl_tiles)
 
+        self._add_row(label('Bomgobob'), attrname='image')
+
         self.box.addWidget(frame(QFrame.VLine), nrows_a + 2, 1, nrows_b - nrows_a - 2, 1)
-        self.box.setRowStretch(nrows_b, 1)
+        self.box.setRowStretch(nrows_b + 1, 1)
 
     def show(self, poly=None):
         self.poly = poly
@@ -245,24 +247,33 @@ class PolyWidget(QWidget):
 
     @_std_args
     def update_project(self, poly, project):
-        if self.poly.dedicated(project):
+        if poly.dedicated(project):
             text = 'Yes'
-        elif self.poly.job(project, True):
-            job = self.poly.job(project, True)
+        elif poly.job(project, True):
+            job = poly.job(project, True)
             text = f'Exporting ({job.stage})'
         else:
             text = 'No'
         self.dedicated.setText(f'{text} (<a href="dl">download</a>)')
 
-        ntiles = self.poly.ntiles(project)
+        ntiles = poly.ntiles(project)
         if ntiles > 0:
             text = str(ntiles)
-        elif self.poly.job(project, False):
-            job = self.poly.job(project, False)
+        elif poly.job(project, False):
+            job = poly.job(project, False)
             text = f'Exporting ({job.stage})'
         else:
             text = 'No'
         self.tiles.setText(f'{text} (<a href="dl">download</a>)')
+
+        thumb = poly.thumbnail(project)
+        if thumb:
+            pixmap = QPixmap(thumb.filename)
+            w = self.image.width()
+            h = max(w, int(w / pixmap.width() * pixmap.height()))
+            self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.image.setPixmap(QPixmap())
 
     @_std_args
     def _create_job(self, poly, project, dedicated):
@@ -302,34 +313,8 @@ class PolyWidget(QWidget):
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_tiles()
+            self.poly.delete_tiles(project)
         self._create_job(dedicated=False)
-
-    #     if status == Status.Downloaded:
-    #         pixmap = QPixmap()
-    #         pixmap.loadFromData(self.poly.geotiff(project).thumbnail())
-    #         w = self.image.width()
-    #         h = max(w, int(w / pixmap.width() * pixmap.height()))
-    #         self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-    #     else:
-    #         self.image.setPixmap(QPixmap())
-
-    # def act(self):
-    #     if self.poly is None:
-    #         return
-    #     project, _ = PROJECTS[self.project.currentIndex()]
-    #     status = self.poly.status(project)
-
-    #     if status == Status.Nothing or status == Status.ExportErrored:
-    #         self.poly.export(project, config['email'])
-    #     elif status == Status.ExportWaiting or status == Status.ExportProcessing:
-    #         self.poly.refresh(project)
-    #     elif status == Status.DownloadReady:
-    #         self.poly.download(project)
-
-    #     self.update_project()
-    #     if self.poly.status(project) == Status.ExportErrored:
-    #         QMessageBox.critical(self, 'Error', self.poly.error(project))
 
 
 class DatabaseWidget(QSplitter):

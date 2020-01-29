@@ -1,16 +1,20 @@
+from contextlib import contextmanager
 from enum import IntEnum
 from functools import lru_cache
-from contextlib import contextmanager
-from io import BytesIO
-from operator import methodcaller
-import json
 import hashlib
-import tempfile
+from io import BytesIO
+import json
+from math import ceil
+from operator import methodcaller
 from pathlib import Path
+import tempfile
 from zipfile import ZipFile
 
 from area import area as geojson_area
+from matplotlib import cm as colormap
+import numpy as np
 from osgeo import gdal
+from PIL import Image
 import requests
 import toml
 from utm import from_latlon
@@ -29,8 +33,9 @@ DeclarativeBase = declarative_base()
 
 # Create database if it does not exist
 DATA_ROOT = XDG_DATA_HOME / 'geomaker'
+THUMBNAIL_ROOT = DATA_ROOT / 'thumbnails'
 
-for d in [DATA_ROOT]:
+for d in [DATA_ROOT, THUMBNAIL_ROOT]:
     if not d.exists():
         d.mkdir()
 
@@ -89,9 +94,14 @@ class Polygon(DeclarativeBase):
 
     id = sql.Column(sql.Integer, primary_key=True)
     name = sql.Column(sql.String, nullable=False)
+    thumbnail = sql.Column(sql.String, nullable=True)
 
     points = orm.relationship(
         'Point', order_by='Point.id', back_populates='polygon', lazy='immediate',
+        cascade='save-update, merge, delete, delete-orphan',
+    )
+    thumbnails = orm.relationship(
+        'Thumbnail', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan',
     )
     assocs = orm.relationship(
@@ -137,15 +147,19 @@ class Polygon(DeclarativeBase):
         return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry)]})
 
     @contextmanager
-    def _assoc_query(self, cls, project, dedicated):
+    def _assoc_query(self, cls, project, dedicated=None):
+        filters = [cls.polygon == self, cls.project == project]
+        if dedicated is not None:
+            filters.append(cls.dedicated == dedicated)
         with db.session() as s:
-            yield s.query(cls).filter(
-                cls.polygon == self, cls.project == project, cls.dedicated == dedicated
-            )
+            yield s.query(cls).filter(*filters)
 
-    def _single_assoc(self, cls, project, dedicated):
-        with self._assoc_query(cls, project, dedicated) as q:
+    def _single_assoc(self, cls, project, dedicated=None):
+        with self._assoc_query(cls, project, dedicated=dedicated) as q:
             return q.one_or_none()
+
+    def thumbnail(self, project):
+        return self._single_assoc(Thumbnail, project)
 
     def dedicated(self, project):
         obj = self._single_assoc(PolyTIFF, project, True)
@@ -164,6 +178,10 @@ class Polygon(DeclarativeBase):
 
     def delete_dedicated(self, project):
         db.delete_if(self.dedicated(project))
+
+    def delete_tiles(self, project):
+        with self._assoc_query(PolyTIFF, project, dedicated=False) as q:
+            q.delete()
 
     def job(self, project, dedicated):
         return self._single_assoc(Job, project, dedicated)
@@ -204,6 +222,55 @@ class Polygon(DeclarativeBase):
         with db.session() as s:
             s.add(job)
 
+    def update_thumbnail(self, project, dedicated):
+        if self.thumbnail(project) is not None and not dedicated:
+            return
+        if self.dedicated(project):
+            tiffs = [self.dedicated(project)]
+        else:
+            tiffs = list(self.tiles(project))
+
+        # Crop image to actual region
+        coords = [pt.z33n for pt in self.points]
+        east = min(x for x,_ in coords)
+        west = max(x for x,_ in coords)
+        south = min(y for _,y in coords)
+        north = max(y for _,y in coords)
+        res = 100
+
+        nx = int((north - south) // res)
+        ny = int((west - east) // res)
+        x, y = np.meshgrid(np.linspace(north, south, nx), np.linspace(east, west, ny), indexing='ij')
+
+        image = np.zeros((nx, ny))
+        for tiff in tiffs:
+            tiff.interpolate(image, x, y)
+
+        image /= np.max(image)
+        image = colormap.terrain(image, bytes=True)
+        filename = THUMBNAIL_ROOT / (hashlib.sha256(image.data).hexdigest() + '.png')
+
+        image = Image.fromarray(image)
+        image.save(filename)
+
+        thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
+        with db.session() as s:
+            s.add(thumb)
+
+
+class Thumbnail(DeclarativeBase):
+    __tablename__ = 'thumbnail'
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    filename = sql.Column(sql.String, nullable=False)
+    project = sql.Column(sql.String, nullable=False)
+    polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
+    polygon = orm.relationship('Polygon', back_populates='thumbnails')
+
+@sql.event.listens_for(Thumbnail, 'after_delete')
+def delete_thumbnail(mapper, connection, thumbnail):
+    Path(thumbnail.filename).unlink()
+
 
 class Point(DeclarativeBase):
     __tablename__ = 'point'
@@ -225,7 +292,6 @@ class GeoTIFF(DeclarativeBase):
 
     id = sql.Column(sql.Integer, primary_key=True)
     filename = sql.Column(sql.String, nullable=False)
-    thumbnail = sql.Column(sql.String, nullable=False)
     east = sql.Column(sql.Float, nullable=False)
     west = sql.Column(sql.Float, nullable=False)
     south = sql.Column(sql.Float, nullable=False)
@@ -240,30 +306,60 @@ class GeoTIFF(DeclarativeBase):
     def dataset(self):
         return gdal.Open(str(self.filename))
 
+    @property
+    @lru_cache(maxsize=1)
+    def shape(self):
+        return self.dataset().ReadAsArray().shape
+
+    @property
+    @lru_cache(maxsize=1)
+    def resolution(self):
+        _, rx, _, _, _, ry = self.dataset().GetGeoTransform()
+        return rx, -ry
+
     def populate(self):
         data = self.dataset()
-
-        # Create thumbnail image
-        filename = str(Path(self.filename).with_suffix('.png'))
-        img = data.ReadAsArray()
-        lo = max(0, min(img.flat))
-        hi = max(img.flat)
-        gdal.Translate(filename, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]], width=640, height=0)
-        Path(filename).with_suffix('.png.aux.xml').unlink()
-        self.thumbnail = filename
+        nx, ny = self.shape
 
         # Compute bounding box
         trf = data.GetGeoTransform()
         assert trf[2] == trf[4] == 0
         self.east = trf[0] + 0.5 * trf[1]
-        self.west = trf[0] + (img.shape[0] - 0.5) * trf[1]
-        self.north = trf[3]
-        self.south = trf[3] + (img.shape[1] - 0.5) * trf[5]
+        self.west = self.east + trf[1] * (nx - 1)
+        self.north = trf[3] + 0.5 * trf[5]
+        self.south = trf[3] + trf[5] * (ny - 1)
+
+    def interpolate(self, data, x, y):
+        rx, ry = self.resolution
+
+        # Mask of which indices apply to this TIFF
+        I, J = np.where((self.south <= x) & (x < self.north) & (self.east <= y) & (y < self.west))
+        x = (self.north - x[I, J]) / rx
+        y = (y[I, J] - self.east) / ry
+
+        # Compute indices of the element for each point
+        left = np.floor(x).astype(int)
+        down = np.floor(y).astype(int)
+
+        # Reference coordinates for each point
+        ref_left = x - left
+        ref_down = y - down
+
+        # Interpolate
+        refdata = self.dataset().ReadAsArray()
+        refdata[np.where(refdata < 0)] = 0
+
+        data[I, J] = np.maximum(
+            data[I, J],
+            refdata[left,   down]   * (1 - ref_left) * (1 - ref_down) +
+            refdata[left+1, down]   * ref_left       * (1 - ref_down) +
+            refdata[left,   down+1] * (1 - ref_left) * ref_down +
+            refdata[left+1, down+1] * ref_left       * ref_down
+        )
 
 @sql.event.listens_for(GeoTIFF, 'after_delete')
 def delete_geotiff(mapper, connection, geotiff):
     Path(geotiff.filename).unlink()
-    Path(geotiff.thumbnail).unlink()
 
 
 class PolyTIFF(DeclarativeBase):
@@ -336,6 +432,7 @@ class Job(DeclarativeBase):
 
         with db.session() as s:
             s.delete(self)
+        self.polygon.update_thumbnail(self.project, self.dedicated)
 
 
 class Database:
