@@ -1,20 +1,67 @@
 import functools
+from contextlib import contextmanager
 from os.path import dirname, realpath, join
 from operator import attrgetter
 import sys
+from string import ascii_lowercase
+import time
 
 from PyQt5.QtCore import (
-    Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel
+    Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel, QThread,
+    pyqtSignal
 )
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter,
-    QFrame, QMessageBox, QComboBox, QPushButton
+    QFrame, QMessageBox, QComboBox, QPushButton, QTabWidget, QProgressDialog
 )
 
-from geomaker.db import PROJECTS, Database, Polygon, Config, Status
+from geomaker.db import PROJECTS, Polygon, Config, db
+
+
+KEY_MAP = {
+    Qt.Key_Space: 'SPC',
+    Qt.Key_Escape: 'ESC',
+    Qt.Key_Tab: 'TAB',
+    Qt.Key_Return: 'RET',
+    Qt.Key_Backspace: 'BSP',
+    Qt.Key_Delete: 'DEL',
+    Qt.Key_Up: 'UP',
+    Qt.Key_Down: 'DOWN',
+    Qt.Key_Left: 'LEFT',
+    Qt.Key_Right: 'RIGHT',
+    Qt.Key_Minus: '-',
+    Qt.Key_Plus: '+',
+    Qt.Key_Equal: '=',
+}
+KEY_MAP.update({
+    getattr(Qt, 'Key_{}'.format(s.upper())): s
+    for s in ascii_lowercase
+})
+KEY_MAP.update({
+    getattr(Qt, 'Key_F{}'.format(i)): '<f{}>'.format(i)
+    for i in range(1, 13)
+})
+
+def key_to_text(event):
+    ctrl = event.modifiers() & Qt.ControlModifier
+    shift = event.modifiers() & Qt.ShiftModifier
+
+    try:
+        text = KEY_MAP[event.key()]
+    except KeyError:
+        return
+
+    if shift and text.isupper():
+        text = 'S-{}'.format(text)
+    elif shift:
+        text = text.upper()
+    if ctrl:
+        text = 'C-{}'.format(text)
+
+    return text
 
 
 def label(text):
@@ -56,14 +103,14 @@ class DatabaseModel(QAbstractListModel):
     def after_delete(self):
         self.endRemoveRows()
 
-    def before_reset(self, poly):
+    def before_reset(self, lfid):
         interface.select_poly(-1)
-        self._selected = poly
+        self._selected = lfid
         self.beginResetModel()
 
     def after_reset(self):
         self.endResetModel()
-        interface.select_poly(self._selected.lfid)
+        interface.select_poly(self._selected)
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
@@ -97,7 +144,7 @@ class JSInterface(QObject):
     @pyqtSlot(int, str)
     def edit_poly(self, lfid, data):
         db.update(lfid, data)
-        db_widget.select(db.index_of(lfid=lfid))
+        db_widget.select(db.index(lfid=lfid))
 
     @pyqtSlot(int)
     def remove_poly(self, lfid):
@@ -108,7 +155,11 @@ class JSInterface(QObject):
         if lfid < 0:
             db_widget.unselect()
         else:
-            db_widget.select(db.index_of(lfid=lfid))
+            db_widget.select(db.index(lfid=lfid))
+
+    @pyqtSlot(int)
+    def open_poly(self, lfid):
+        main_widget.focus(lfid)
 
     @pyqtSlot(str)
     def print(self, s):
@@ -158,16 +209,16 @@ class PolyWidget(QWidget):
         combobox.addItems(project for _, project in PROJECTS)
         combobox.currentIndexChanged.connect(self.update_project)
         self._add_row(combobox, attrname='project')
-        nrows_b = self._add_row(label(''), title=label('Status'), attrname='status')
+        self._add_row(label(''), title=label('Dedicated'), attrname='dedicated')
+        nrows_b = self._add_row(label(''), title=label('Tiles'), attrname='tiles')
 
-        button = QPushButton('')
-        button.clicked.connect(self.act)
-        self._add_row(button, attrname='action', align=Qt.AlignCenter)
+        self.dedicated.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.dedicated.linkActivated.connect(self.dl_dedicated)
+        self.tiles.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.tiles.linkActivated.connect(self.dl_tiles)
 
-        self._add_row(label(''), attrname='image')
-
-        self.box.addWidget(frame(QFrame.VLine), nrows_b - 1, 1, nrows_b - nrows_a - 2, 1)
-        self.box.setRowStretch(nrows_b + 2, 1)
+        self.box.addWidget(frame(QFrame.VLine), nrows_a + 2, 1, nrows_b - nrows_a - 2, 1)
+        self.box.setRowStretch(nrows_b, 1)
 
     def show(self, poly=None):
         self.poly = poly
@@ -185,40 +236,100 @@ class PolyWidget(QWidget):
 
         self.update_project()
 
-    def update_project(self):
-        if self.poly is None:
-            return
-        project, _ = PROJECTS[self.project.currentIndex()]
-        status = self.poly.status(project)
+    def _std_args(func):
+        def wrap(self, *args, **kwargs):
+            if self.poly is None:
+                return
+            return func(self, *args, poly=self.poly, project=PROJECTS[self.project.currentIndex()][0], **kwargs)
+        return wrap
 
-        self.status.setText(status.desc())
-        self.action.setText(status.action())
-
-        if status == Status.Downloaded:
-            pixmap = QPixmap()
-            pixmap.loadFromData(self.poly.geotiff(project).thumbnail())
-            w = self.image.width()
-            h = max(w, int(w / pixmap.width() * pixmap.height()))
-            self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    @_std_args
+    def update_project(self, poly, project):
+        if self.poly.dedicated(project):
+            text = 'Yes'
+        elif self.poly.job(project, True):
+            job = self.poly.job(project, True)
+            text = f'Exporting ({job.stage})'
         else:
-            self.image.setPixmap(QPixmap())
+            text = 'No'
+        self.dedicated.setText(f'{text} (<a href="dl">download</a>)')
 
-    def act(self):
-        if self.poly is None:
-            return
-        project, _ = PROJECTS[self.project.currentIndex()]
-        status = self.poly.status(project)
+        ntiles = self.poly.ntiles(project)
+        if ntiles > 0:
+            text = str(ntiles)
+        elif self.poly.job(project, False):
+            job = self.poly.job(project, False)
+            text = f'Exporting ({job.stage})'
+        else:
+            text = 'No'
+        self.tiles.setText(f'{text} (<a href="dl">download</a>)')
 
-        if status == Status.Nothing or status == Status.ExportErrored:
-            self.poly.export(project, config['email'])
-        elif status == Status.ExportWaiting or status == Status.ExportProcessing:
-            self.poly.refresh(project)
-        elif status == Status.DownloadReady:
-            self.poly.download(project)
+    @_std_args
+    def _create_job(self, poly, project, dedicated):
+        if poly.job(project, dedicated):
+            answer = QMessageBox.question(
+                self, 'Delete existing job?',
+                'This region already has a job of this type. Delete it and restart?'
+            )
+            if answer == QMessageBox.No:
+                return
+            poly.delete_job(dedicated)
+
+        error = poly.create_job(project, dedicated, email=config['email'])
+        if error:
+            QMessageBox().critical(self, 'Error', error)
 
         self.update_project()
-        if self.poly.status(project) == Status.ExportErrored:
-            QMessageBox.critical(self, 'Error', self.poly.error(project))
+
+    @_std_args
+    def dl_dedicated(self, _, poly, project):
+        if self.poly.dedicated(project):
+            answer = QMessageBox.question(
+                self, 'Delete existing dedicated file?',
+                'This region already has a dedicated data file. Delete it and download again?'
+            )
+            if answer == QMessageBox.No:
+                return
+            self.poly.delete_dedicated(project)
+        self._create_job(dedicated=True)
+
+    @_std_args
+    def dl_tiles(self, _, poly, project):
+        if self.poly.ntiles(project) > 0:
+            answer = QMessageBox.question(
+                self, 'Disassociate existing tiles?',
+                'This region already has associated tiles. Disassociate them and download again?'
+            )
+            if answer == QMessageBox.No:
+                return
+            self.poly.delete_tiles()
+        self._create_job(dedicated=False)
+
+    #     if status == Status.Downloaded:
+    #         pixmap = QPixmap()
+    #         pixmap.loadFromData(self.poly.geotiff(project).thumbnail())
+    #         w = self.image.width()
+    #         h = max(w, int(w / pixmap.width() * pixmap.height()))
+    #         self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    #     else:
+    #         self.image.setPixmap(QPixmap())
+
+    # def act(self):
+    #     if self.poly is None:
+    #         return
+    #     project, _ = PROJECTS[self.project.currentIndex()]
+    #     status = self.poly.status(project)
+
+    #     if status == Status.Nothing or status == Status.ExportErrored:
+    #         self.poly.export(project, config['email'])
+    #     elif status == Status.ExportWaiting or status == Status.ExportProcessing:
+    #         self.poly.refresh(project)
+    #     elif status == Status.DownloadReady:
+    #         self.poly.download(project)
+
+    #     self.update_project()
+    #     if self.poly.status(project) == Status.ExportErrored:
+    #         QMessageBox.critical(self, 'Error', self.poly.error(project))
 
 
 class DatabaseWidget(QSplitter):
@@ -289,18 +400,55 @@ class MainWidget(QSplitter):
         self.view.setUrl(QUrl.fromLocalFile(html))
 
         self.addWidget(self.view)
-        self.addWidget(db_widget)
+
+        self.tabview = QTabWidget()
+        self.addWidget(self.tabview)
+
+        self.tabview.addTab(db_widget, 'Regions')
 
     def add_polys(self):
         for poly in db:
-            points = str(poly.points)
-            self.view.page().runJavaScript(f'add_object({points})', poly.set_lfid)
+            points = str(list(poly.geometry))
+            self.view.page().runJavaScript(
+                f'add_object({points})',
+                functools.partial(Polygon.lfid.fset, poly)
+            )
 
     def set_selected(self, lfid=-1):
         self.view.page().runJavaScript(f'select_object({lfid})')
 
     def focus(self, lfid):
         self.view.page().runJavaScript(f'focus_object({lfid})')
+
+
+def progress(items, desc, length=None):
+    if length is None:
+        length = len(items)
+    if length == 0:
+        return
+
+    progress = QProgressDialog(desc, 'Cancel', 0, length, main_window)
+    progress.setValue(0)
+    progress.setWindowTitle('GeoMaker')
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.show()
+
+    # This is incredibly hacky, but seems to be necessary
+    # to get the progress dialog to draw at 0%
+    # TODO: Figure out a way to get rid of this
+    for _ in range(10):
+        app.processEvents()
+        time.sleep(0.01)
+
+    for i, item in enumerate(items):
+        app.processEvents()
+        progress.setValue(i)
+        if progress.wasCanceled():
+            return
+        yield item
+    else:
+        progress.setValue(progress.maximum())
 
 
 class MainWindow(QMainWindow):
@@ -321,18 +469,28 @@ class MainWindow(QMainWindow):
         name, _ = QInputDialog.getText(self, title, msg)
         return name
 
+    def keyPressEvent(self, event):
+        text = key_to_text(event)
+        if text == 'DEL':
+            print('delete')
+        elif text == '<f5>':
+            for job in progress(db.jobs(), 'Refreshing jobs...', length=db.njobs()):
+                job.refresh()
+            for job in progress(db.jobs(stage='complete'), 'Downloading data...', length=db.njobs(stage='complete')):
+                job.download()
+            db_widget.poly.update_project()
+
 
 def main():
-    global config, db, db_widget, interface, main_widget
+    global app, config, db_widget, interface, main_widget, main_window
 
     config = Config()
 
     app = QApplication(sys.argv)
-    db = Database()
     db_widget = DatabaseWidget()
     interface = JSInterface()
     main_widget = MainWidget()
+    main_window = MainWindow()
 
-    win = MainWindow()
-    win.showMaximized()
+    main_window.showMaximized()
     sys.exit(app.exec_())

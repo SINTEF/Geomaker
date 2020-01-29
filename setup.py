@@ -19,7 +19,15 @@ setup(
         'console_scripts': ['geomaker=geomaker.__main__:main'],
     },
     install_requires=[
-        'pyqt5',
+        'area',
+        'bidict',
+        'GDAL',
+        'PyQt5',
+        'PyQtWebEngine',
+        'requests',
+        'SQLAlchemy',
+        'toml',
+        'utm',
         'xdg',
     ],
 )

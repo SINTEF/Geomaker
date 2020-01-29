@@ -49,7 +49,11 @@ function initialize() {
     var google = L.tileLayer(googleUrl, { maxZoom: 18, attribution: googleAttrib });
 
     // Actual map object with drawn items
-    map = new L.Map('map', { center: new L.LatLng(63.43011, 10.39478), zoom: 15 });
+    map = new L.Map('map', {
+        center: new L.LatLng(63.43011, 10.39478),
+        zoom: 15,
+        doubleClickZoom: false,
+    });
     drawnItems = L.featureGroup().addTo(map);
 
     // Control for choosing which layers to show
@@ -151,5 +155,12 @@ function initialize() {
                 deselect = false;
             }
         });
+
+        drawnItems.on('dblclick', function (event) {
+            if (typeof Interface != 'undefined') {
+                Interface.open_poly(event.layer._leaflet_id);
+                deselect = false;
+            }
+        })
     });
 }

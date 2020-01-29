@@ -1,6 +1,7 @@
 from enum import IntEnum
 from functools import lru_cache
 from contextlib import contextmanager
+from io import BytesIO
 from operator import methodcaller
 import json
 import hashlib
@@ -16,11 +17,20 @@ from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
 
-# Create database if it does not exist
-DATA_ROOT = XDG_DATA_HOME / 'geomaker' / 'database'
-POLYGON_ROOT = DATA_ROOT / 'polygons'
+from bidict import bidict
 
-for d in [DATA_ROOT, POLYGON_ROOT]:
+
+import sqlalchemy as sql
+import sqlalchemy.orm as orm
+from sqlalchemy.ext.declarative import declarative_base
+
+DeclarativeBase = declarative_base()
+
+
+# Create database if it does not exist
+DATA_ROOT = XDG_DATA_HOME / 'geomaker'
+
+for d in [DATA_ROOT]:
     if not d.exists():
         d.mkdir()
 
@@ -43,35 +53,6 @@ for project, _ in PROJECTS:
         proj_dir.mkdir()
 
 
-class Status(IntEnum):
-    Nothing = 0
-    ExportErrored = 1
-    ExportWaiting = 2
-    ExportProcessing = 3
-    DownloadReady = 4
-    Downloaded = 5
-
-    def desc(self):
-        return {
-            Status.Nothing: 'No export request made',
-            Status.ExportErrored: 'Export request errored',
-            Status.ExportWaiting: 'Waiting for export to start',
-            Status.ExportProcessing: 'Waiting for export to finish',
-            Status.DownloadReady: 'Data file ready to download',
-            Status.Downloaded: 'Data file available locally',
-        }[self]
-
-    def action(self):
-        return {
-            Status.Nothing: 'Export',
-            Status.ExportErrored: 'Export',
-            Status.ExportWaiting: 'Refresh',
-            Status.ExportProcessing: 'Refresh',
-            Status.DownloadReady: 'Download',
-            Status.Downloaded: 'View',
-        }[self]
-
-
 def make_request(endpoint, params):
     params = json.dumps(params)
     url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
@@ -79,27 +60,6 @@ def make_request(endpoint, params):
     if response.status_code != 200:
         return response.status_code, None
     return response.status_code, json.loads(response.text)
-
-
-def unicase_name(poly):
-    if isinstance(poly, Polygon):
-        poly = poly.name
-    return poly.lower()
-
-
-# Same as built-in bisect_right but with a key argument
-def bisect_right(a, x, lo=0, hi=None, key=(lambda x: x)):
-    if lo < 0:
-        raise ValueError('lo must be non-negative')
-    if hi is None:
-        hi = len(a)
-    while lo < hi:
-        mid = (lo+hi)//2
-        if key(x) < key(a[mid]):
-            hi = mid
-        else:
-            lo = mid+1
-    return lo
 
 
 class Config(dict):
@@ -124,261 +84,332 @@ class Config(dict):
             toml.dump(self, f)
 
 
-class GeoTIFF:
+class Polygon(DeclarativeBase):
+    __tablename__ = 'polygon'
 
-    def __init__(self, filename, project):
-        self.filename = filename
-        self.project = project.lower()
+    id = sql.Column(sql.Integer, primary_key=True)
+    name = sql.Column(sql.String, nullable=False)
 
-    @contextmanager
-    def _temp_extract(self, filename):
-        with tempfile.NamedTemporaryFile(delete=False) as tfile:
-            with ZipFile(self.filename, 'r') as z:
-                with z.open(filename, 'r') as tiff:
-                    tfile.write(tiff.read())
-        yield tfile.name
-        Path(tfile.name).unlink()
-
-    @property
-    @lru_cache(maxsize=1)
-    def dataset(self):
-        with self._temp_extract(f'{self.project}/data/{self.project}.tif') as filename:
-            return gdal.Open(filename)
+    points = orm.relationship(
+        'Point', order_by='Point.id', back_populates='polygon', lazy='immediate',
+        cascade='save-update, merge, delete, delete-orphan',
+    )
+    assocs = orm.relationship(
+        'PolyTIFF', back_populates='polygon',
+        cascade='save-update, merge, delete, delete-orphan'
+    )
+    jobs = orm.relationship(
+        'Job', order_by='Job.jobid', back_populates='polygon',
+        cascade='save-update, merge, delete, delete-orphan'
+    )
 
     @property
-    @lru_cache(maxsize=1)
-    def thumb_dataset(self):
-        with self._temp_extract(f'{self.project}/data/{self.project}.tif.ovr') as filename:
-            return gdal.Open(filename)
+    def lfid(self):
+        return db.lfid.inverse.get(self.id, None)
 
-    def thumbnail(self):
-        with ZipFile(self.filename, 'r') as z:
-            with z.open('thumbnail.png', 'r') as thumb:
-                return thumb.read()
-
-    def ensure_thumbnail(self):
-        with ZipFile(self.filename, 'r') as z:
-            if 'thumbnail.png' in z.namelist():
-                return
-        data = self.dataset
-        with tempfile.NamedTemporaryFile(suffix='.png') as tfile:
-            img = data.ReadAsArray()
-            lo = max(0, min(img.flat))
-            hi = max(img.flat)
-            gdal.Translate(tfile.name, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]], width=640, height=0)
-            with ZipFile(self.filename, 'a') as z:
-                z.write(tfile.name, 'thumbnail.png')
-
-
-class Polygon:
-
-    def __init__(self, data, dbid=None, lfid=None, db=None, write=True):
-        self.dbid = dbid
-        self.data = data
-        self.db = db
-
-        self.lfid = None
-        self.set_lfid(lfid)
-
-        if write:
-            self.write()
-
-    @classmethod
-    def from_file(cls, path, **kwargs):
-        with open(path, 'r') as f:
-            data = json.load(f)
-        for proj in data.setdefault('files', {}).values():
-            proj['status'] = Status(proj['status'])
-        return cls(data, dbid=path.stem, write=False, **kwargs)
-
-    @classmethod
-    def from_dbid(cls, dbid, **kwargs):
-        return cls.from_file(dbid + '.json', write=False, **kwargs)
+    @lfid.setter
+    def lfid(self, value):
+        db.update_lfid(self, value)
 
     @property
-    def filename(self):
-        return POLYGON_ROOT.joinpath(self.dbid + '.json')
-
-    @property
-    def geojson(self):
-        return self.data['data']
-
-    @property
-    def points(self):
-        return self.geojson['geometry']['coordinates'][0]
-
-    @property
-    def name(self):
-        return self.data.setdefault('name', self.dbid)
-
-    @name.setter
-    def name(self, value):
-        self.data['name'] = value
-        self.write()
+    def geometry(self):
+        for p in self.points:
+            yield [p.x, p.y]
 
     @property
     def west(self):
-        return min(lon for lon, _ in self.points)
+        return min(x for x,_ in self.geometry)
 
     @property
     def east(self):
-        return max(lon for lon, _ in self.points)
+        return max(x for x,_ in self.geometry)
 
     @property
     def south(self):
-        return min(lat for _, lat in self.points)
+        return min(y for _,y in self.geometry)
 
     @property
     def north(self):
-        return max(lat for _, lat in self.points)
+        return max(y for _,y in self.geometry)
 
     @property
     def area(self):
-        return geojson_area(self.geojson['geometry'])
+        return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry)]})
 
-    @property
-    def files(self):
-        return self.data.setdefault('files', {})
+    @contextmanager
+    def _assoc_query(self, cls, project, dedicated):
+        with db.session() as s:
+            yield s.query(cls).filter(
+                cls.polygon == self, cls.project == project, cls.dedicated == dedicated
+            )
 
-    @lru_cache(maxsize=3)
-    def geotiff(self, project):
-        return GeoTIFF(self.datafile(project), project)
+    def _single_assoc(self, cls, project, dedicated):
+        with self._assoc_query(cls, project, dedicated) as q:
+            return q.one_or_none()
 
-    def set_lfid(self, lfid):
-        if self.lfid is not None:
-            self.db.unlink_lfid(self)
-        self.lfid = lfid
-        if self.lfid is not None:
-            self.db.link_lfid(self)
+    def dedicated(self, project):
+        obj = self._single_assoc(PolyTIFF, project, True)
+        if obj:
+            obj = obj.geotiff
+        return obj
 
-    def write(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.data, f)
+    def ntiles(self, project):
+        with self._assoc_query(PolyTIFF, project, False) as q:
+            return q.count()
 
-    def update(self, data):
-        self.data['data'] = data
-        self.write()
+    def tiles(self, project):
+        with self._assoc_query(PolyTIFF, project, False) as q:
+            for assoc in q:
+                yield assoc.geotiff
 
-    def delete(self):
-        self.filename.unlink()
-        for project, _ in PROJECTS:
-            datafile = self.datafile(project)
-            if datafile.exists():
-                datafile.unlink()
+    def delete_dedicated(self, project):
+        db.delete_if(self.dedicated(project))
 
-    def _project(self, project):
-        return self.files.setdefault(project, {'status': Status.Nothing})
+    def job(self, project, dedicated):
+        return self._single_assoc(Job, project, dedicated)
 
-    def status(self, project):
-        return self._project(project)['status']
+    def delete_job(self, project, dedicated):
+        obj = self.job(project, dedicated)
+        db.delete_if(obj)
 
-    def error(self, project):
-        return self._project(project).get('error', None) or 'Unknown error occured'
+    def create_job(self, project, dedicated, email):
+        if dedicated:
+            assert self.dedicated(project) is None
+        else:
+            assert self.ntiles(project) == 0
+        assert self.job(project, dedicated) is None
 
-    def datafile(self, project):
-        return DATA_ROOT / project / (self.dbid + '.zip')
-
-    def export(self, project, email):
-        # Convert points to UTM 33N integers
-        coords = [from_latlon(lat, lon, force_zone_number=33, force_zone_letter='N') for lon, lat in self.points]
-        coords = [(int(x), int(y)) for x, y, *_ in coords]
+        coords = [pt.z33n for pt in self.points]
+        coords = [(int(x), int(y)) for x, y in coords]
         coords = ';'.join(f'{x},{y}' for x, y in coords)
-
         params = {
             'CopyEmail': email,
             'Projects': project,
             'CoordInput': coords,
-            'InputWkid': 25833, # ETRS89 / UTM zone 33N
-            'Format': 5,        # GeoTIFF
-            'NHM': 1,           # National altitude models
-            'ProjectMerge': 1,  # Don't split up data
+            'ProjectMerge': 1 if dedicated else 0,
+            'InputWkid': 25833,      # ETRS89 / UTM zone 33N
+            'Format': 5,             # GeoTIFF,
+            'NHM': 1,                # National altitude models
         }
 
         code, response = make_request('startExport', params)
-        proj = self._project(project)
         if response is None:
-            proj['status'] = Status.ExportErrored
-            proj['error'] = f'HTTP code {code}'
-        elif 'Error' in response:
-            proj['status'] = Status.ExportErrored
-            proj['error'] = response['Error']
+            return f'HTTP code {code}'
+        elif 'Error'in response:
+            return response['Error']
         elif not response.get('Success', False):
-            proj['status'] = Status.ExportErrored
-            proj['error'] = None
-        else:
-            proj['status'] = Status.ExportWaiting
-            proj['jobid'] = response.get('JobID', -1)
+            return 'Unknown error'
 
-        self.write()
+        job = Job(polygon=self, project=project, dedicated=dedicated, jobid=response['JobID'])
+        with db.session() as s:
+            s.add(job)
 
-    def refresh(self, project):
-        proj = self._project(project)
-        code, response = make_request('exportStatus', {'JobID': proj['jobid']})
 
+class Point(DeclarativeBase):
+    __tablename__ = 'point'
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    x = sql.Column(sql.Float, nullable=False)
+    y = sql.Column(sql.Float, nullable=False)
+    polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
+    polygon = orm.relationship('Polygon', back_populates='points')
+
+    @property
+    def z33n(self):
+        x, y, *_ = from_latlon(self.y, self.x, force_zone_number=33, force_zone_letter='N')
+        return x, y
+
+
+class GeoTIFF(DeclarativeBase):
+    __tablename__ = 'geotiff'
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    filename = sql.Column(sql.String, nullable=False)
+    thumbnail = sql.Column(sql.String, nullable=False)
+    east = sql.Column(sql.Float, nullable=False)
+    west = sql.Column(sql.Float, nullable=False)
+    south = sql.Column(sql.Float, nullable=False)
+    north = sql.Column(sql.Float, nullable=False)
+
+    assocs = orm.relationship(
+        'PolyTIFF', back_populates='geotiff',
+        cascade='save-update, merge, delete, delete-orphan',
+    )
+
+    @lru_cache(maxsize=1)
+    def dataset(self):
+        return gdal.Open(str(self.filename))
+
+    def populate(self):
+        data = self.dataset()
+
+        # Create thumbnail image
+        filename = str(Path(self.filename).with_suffix('.png'))
+        img = data.ReadAsArray()
+        lo = max(0, min(img.flat))
+        hi = max(img.flat)
+        gdal.Translate(filename, data, format='PNG', outputType=gdal.GDT_Byte, scaleParams=[[lo, hi]], width=640, height=0)
+        Path(filename).with_suffix('.png.aux.xml').unlink()
+        self.thumbnail = filename
+
+        # Compute bounding box
+        trf = data.GetGeoTransform()
+        assert trf[2] == trf[4] == 0
+        self.east = trf[0] + 0.5 * trf[1]
+        self.west = trf[0] + (img.shape[0] - 0.5) * trf[1]
+        self.north = trf[3]
+        self.south = trf[3] + (img.shape[1] - 0.5) * trf[5]
+
+@sql.event.listens_for(GeoTIFF, 'after_delete')
+def delete_geotiff(mapper, connection, geotiff):
+    Path(geotiff.filename).unlink()
+    Path(geotiff.thumbnail).unlink()
+
+
+class PolyTIFF(DeclarativeBase):
+    __tablename__ = 'polytiff'
+
+    polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), primary_key=True)
+    geotiff_id = sql.Column(sql.Integer, sql.ForeignKey('geotiff.id'), primary_key=True)
+    dedicated = sql.Column(sql.Boolean, nullable=False)
+    project = sql.Column(sql.String, nullable=False)
+
+    polygon = orm.relationship('Polygon', back_populates='assocs')
+    geotiff = orm.relationship('GeoTIFF', back_populates='assocs')
+
+
+class Job(DeclarativeBase):
+    __tablename__ = 'job'
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'))
+    project = sql.Column(sql.String, nullable=False)
+    dedicated = sql.Column(sql.Boolean, nullable=False)
+    jobid = sql.Column(sql.Integer, nullable=False)
+    stage = sql.Column(sql.String, nullable=False, default='new')
+    error = sql.Column(sql.String, nullable=True)
+    url = sql.Column(sql.String, nullable=True)
+
+    polygon = orm.relationship('Polygon', back_populates='jobs')
+
+    def refresh(self):
+        code, response = make_request('exportStatus', {'JobID': self.jobid})
         if response is None:
-            proj['status'] = Status.ExportErrored
-            proj['error'] = f'HTTP code {code}'
-        elif response['Status'] == 'new':
-            proj['status'] = Status.ExportWaiting
-        elif response['Status'] == 'processing':
-            proj['status'] = Status.ExportProcessing
-        elif response['Status'] == 'complete' and response['Finished']:
-            proj['status'] = Status.DownloadReady
-            proj['url'] = response['Url']
+            self.stage = 'error'
+            self.error = f'HTTP code {code}'
+        else:
+            self.stage = response['Status']
+            if self.stage == 'complete':
+                self.url = response['Url']
+        db.commit()
 
-        self.write()
+    def download(self):
+        assert self.stage == 'complete'
+        assert self.url is not None
 
-    def download(self, project):
-        proj = self._project(project)
-        if not 'url' in proj:
-            proj['status'] = Status.ExportErrored
-            proj['error'] = None
-
-        response = requests.get(proj['url'])
+        response = requests.get(self.url)
         if response.status_code != 200:
-            proj['status'] = Status.ExportErrored
-            proj['error'] = f'HTTP code {response.status_code}'
+            self.stage = 'error'
+            self.error = f'HTTP code {code}'
+            return
 
-        with open(self.datafile(project), 'wb') as f:
-            f.write(response.content)
+        with ZipFile(BytesIO(response.content), 'r') as z:
+            tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
+            if self.dedicated:
+                assert len(tifpaths) == 1
 
-        proj['status'] = Status.Downloaded
+            for path in tifpaths:
+                data = z.read(path)
+                if self.dedicated:
+                    filename = hashlib.sha256(data).hexdigest() + '.tiff'
+                else:
+                    filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
+                filename = DATA_ROOT / self.project / filename
+                with open(filename, 'wb') as f:
+                    f.write(data)
+                geotiff = GeoTIFF(filename=str(filename))
+                geotiff.populate()
+                polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
+                with db.session() as s:
+                    s.add(geotiff)
+                    s.add(polytiff)
 
-        self.geotiff(project).ensure_thumbnail()
-        self.write()
+        with db.session() as s:
+            s.delete(self)
 
 
 class Database:
 
     def __init__(self):
-        self.data = []
-        self.by_lfid = {}
+        self.engine = sql.create_engine(f'sqlite:///{DATA_ROOT}/db.sqlite3')
+        DeclarativeBase.metadata.create_all(self.engine)
+        self._session = orm.sessionmaker(bind=self.engine)()
+
+        self.lfid = bidict()
         self.listeners = []
 
-        self._initialize_db()
+    @contextmanager
+    def session(self):
+        session = self._session
+        try:
+            yield session
+            session.commit()
+        except:
+            session.rollback()
+            raise
 
-    def _initialize_db(self):
-        self.data = sorted([
-            Polygon.from_file(path, db=self)
-            for path in POLYGON_ROOT.joinpath('').glob('*.json')
-        ], key=unicase_name)
-
-    def __getitem__(self, key):
-        return self.data[key]
+    def commit(self):
+        with self.session() as s:
+            pass
 
     def __iter__(self):
-        yield from self.data
-
-    def __delitem__(self, dbid):
-        poly = self.data[dbid]
-        poly.delete()
-
-        del self.data[dbid]
-        if poly.lfid is not None:
-            del self.by_lfid[poly.lfid]
+        with self.session() as s:
+            yield from s.query(Polygon).order_by(Polygon.name)
 
     def __len__(self):
-        return len(self.data)
+        with self.session() as s:
+            return s.query(Polygon).count()
+
+    def __getitem__(self, index):
+        with self.session() as s:
+            return s.query(Polygon).order_by(Polygon.name)[index]
+
+    @contextmanager
+    def _job_query(self, stage=None):
+        with self.session() as s:
+            q = s.query(Job)
+            if stage is not None:
+                q = q.filter(Job.stage == stage)
+            yield q
+
+    def njobs(self, stage=None):
+        with self._job_query(stage) as q:
+            return q.count()
+
+    def jobs(self, stage=None):
+        with self._job_query(stage) as q:
+            yield from q.order_by(Job.jobid)
+
+    def delete_if(self, obj):
+        if obj is not None:
+            with self.session() as s:
+                s.delete(obj)
+
+    def poly_by_lfid(self, lfid):
+        with self.session() as s:
+            return s.query(Polygon).get(self.lfid[lfid])
+
+    def index(self, poly=None, lfid=None):
+        if poly is None:
+            poly = self.poly_by_lfid(lfid)
+        with self.session() as s:
+            return s.query(Polygon).filter(Polygon.name < poly.name).count()
+
+    def update_lfid(self, poly, lfid):
+        if poly.id in self.lfid.inverse:
+            del self.lfid.inverse[poly.id]
+        if lfid is not None:
+            self.lfid[lfid] = poly.id
 
     def notify(self, obj):
         self.listeners.append(obj)
@@ -389,43 +420,35 @@ class Database:
             caller(listener)
 
     def update_name(self, index, name):
-        new_index = bisect_right(self.data, name, key=unicase_name)
         poly = self[index]
-        poly.name = name
 
-        self.message('before_reset', poly)
-        self.data = sorted(self.data, key=unicase_name)
+        self.message('before_reset', poly.lfid)
+        poly.name = name
+        self.commit()
         self.message('after_reset')
 
-    def unlink_lfid(self, poly):
-        del self.by_lfid[poly.lfid]
-
-    def link_lfid(self, poly):
-        self.by_lfid[poly.lfid] = poly
-
-    def index_of(self, poly=None, lfid=None):
-        if poly is None:
-            poly = self.by_lfid[lfid]
-        return self.data.index(poly)
-
     def create(self, lfid, name, data):
-        dbid = hashlib.sha256(data.encode('utf-8')).hexdigest()
-        data = json.loads(data)
+        points = json.loads(data)['geometry']['coordinates'][0]
 
-        poly = Polygon({'data': data}, dbid=dbid, lfid=lfid, db=self)
-        poly.name = name
+        poly = Polygon(name=name)
+        for x, y in points:
+            Point(x=x, y=y, polygon=poly)
+        with self.session() as s:
+            s.add(poly)
+        poly.lfid = lfid
 
-        index = bisect_right(self.data, poly, key=unicase_name)
+        index = self.index(poly=poly)
         self.message('before_insert', index)
-        self.data.insert(index, poly)
         self.message('after_insert')
 
-    def update(self, lfid, data):
-        self.by_lfid[lfid].update(json.loads(data))
-
     def delete(self, lfid):
-        index = self.index_of(lfid=lfid)
+        poly = self.poly_by_lfid(lfid)
+        index = self.index(poly=poly)
 
         self.message('before_delete', index)
-        del self[index]
+        with self.session() as s:
+            s.delete(poly)
         self.message('after_delete')
+
+
+db = Database()
