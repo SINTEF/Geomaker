@@ -433,9 +433,9 @@ class Job(DeclarativeBase):
                     s.add(geotiff)
                     s.add(polytiff)
 
+        self.polygon.update_thumbnail(self.project, self.dedicated)
         with db.session() as s:
             s.delete(self)
-        self.polygon.update_thumbnail(self.project, self.dedicated)
 
 
 class Database:
