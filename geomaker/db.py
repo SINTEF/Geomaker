@@ -225,6 +225,7 @@ class Polygon(DeclarativeBase):
     def update_thumbnail(self, project, dedicated):
         if self.thumbnail(project) is not None and not dedicated:
             return
+        db.delete_if(self.thumbnail(project))
         if self.dedicated(project):
             tiffs = [self.dedicated(project)]
         else:
