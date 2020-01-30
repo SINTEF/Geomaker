@@ -452,10 +452,11 @@ class MainWindow(QMainWindow):
         if text == 'DEL':
             print('delete')
         elif text == '<f5>':
-            for job in progress(db.jobs(), 'Refreshing jobs...', length=db.njobs()):
-                job.refresh()
-            for job in progress(db.jobs(stage='complete'), 'Downloading data...', length=db.njobs(stage='complete')):
-                job.download()
+            with db.session() as s:
+                for job in progress(db.jobs(), 'Refreshing jobs...', length=db.njobs()):
+                    job.refresh()
+                for job in progress(db.jobs(stage='complete'), 'Downloading data...', length=db.njobs(stage='complete')):
+                    job.download()
             db_widget.poly.update_project()
 
 
