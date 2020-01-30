@@ -236,7 +236,9 @@ class Polygon(DeclarativeBase):
         west = max(x for x,_ in coords)
         south = min(y for _,y in coords)
         north = max(y for _,y in coords)
-        res = 100
+
+        # Compute a suitable resolution
+        res = max(north - south, east - west) / 640
 
         nx = int((north - south) // res)
         ny = int((west - east) // res)
