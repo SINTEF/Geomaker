@@ -22,6 +22,7 @@ setup(
         'area',
         'bidict',
         'GDAL',
+        'matplotlib',
         'PyQt5',
         'PyQtWebEngine',
         'requests',
