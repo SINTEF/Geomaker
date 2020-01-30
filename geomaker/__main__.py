@@ -390,6 +390,7 @@ class MainWidget(QSplitter):
                 f'add_object({points})',
                 functools.partial(Polygon.lfid.fset, poly)
             )
+            self.view.page().runJavaScript('focus_object(-1)')
 
     def set_selected(self, lfid=-1):
         self.view.page().runJavaScript(f'select_object({lfid})')

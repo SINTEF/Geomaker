@@ -35,7 +35,12 @@ function select_object(lfid) {
 }
 
 function focus_object(lfid) {
-    map.fitBounds(drawnItems.getLayer(lfid).getBounds());
+    if (lfid >= 0) {
+        map.fitBounds(drawnItems.getLayer(lfid).getBounds());
+    }
+    else {
+        map.fitBounds(drawnItems.getBounds());
+    }
 }
 
 function initialize() {
