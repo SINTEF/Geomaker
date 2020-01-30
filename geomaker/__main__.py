@@ -208,7 +208,7 @@ class PolyWidget(QWidget):
         combobox = QComboBox()
         combobox.addItems(project for _, project in PROJECTS)
         combobox.currentIndexChanged.connect(self.update_project)
-        self._add_row(combobox, attrname='project')
+        self._add_row(combobox, attrname='project_chooser')
         self._add_row(label(''), title=label('Dedicated'), attrname='dedicated')
         nrows_b = self._add_row(label(''), title=label('Tiles'), attrname='tiles')
 
@@ -238,35 +238,31 @@ class PolyWidget(QWidget):
 
         self.update_project()
 
-    def _std_args(func):
-        def wrap(self, *args, **kwargs):
-            if self.poly is None:
-                return
-            return func(self, *args, poly=self.poly, project=PROJECTS[self.project.currentIndex()][0], **kwargs)
-        return wrap
+    @property
+    def project(self):
+        return PROJECTS[self.project_chooser.currentIndex()][0]
 
-    @_std_args
-    def update_project(self, poly, project):
-        if poly.dedicated(project):
+    def update_project(self):
+        if self.poly.dedicated(self.project):
             text = 'Yes'
-        elif poly.job(project, True):
-            job = poly.job(project, True)
+        elif self.poly.job(self.project, True):
+            job = self.poly.job(self.project, True)
             text = f'Exporting ({job.stage})'
         else:
             text = 'No'
         self.dedicated.setText(f'{text} (<a href="dl">download</a>)')
 
-        ntiles = poly.ntiles(project)
+        ntiles = self.poly.ntiles(self.project)
         if ntiles > 0:
             text = str(ntiles)
-        elif poly.job(project, False):
-            job = poly.job(project, False)
+        elif self.poly.job(self.project, False):
+            job = self.poly.job(self.project, False)
             text = f'Exporting ({job.stage})'
         else:
             text = 'No'
         self.tiles.setText(f'{text} (<a href="dl">download</a>)')
 
-        thumb = poly.thumbnail(project)
+        thumb = self.poly.thumbnail(self.project)
         if thumb:
             pixmap = QPixmap(thumb.filename)
             w = self.image.width()
@@ -275,45 +271,42 @@ class PolyWidget(QWidget):
         else:
             self.image.setPixmap(QPixmap())
 
-    @_std_args
-    def _create_job(self, poly, project, dedicated):
-        if poly.job(project, dedicated):
+    def _create_job(self, dedicated):
+        if self.poly.job(self.project, dedicated):
             answer = QMessageBox.question(
                 self, 'Delete existing job?',
                 'This region already has a job of this type. Delete it and restart?'
             )
             if answer == QMessageBox.No:
                 return
-            poly.delete_job(dedicated)
+            self.poly.delete_job(dedicated)
 
-        error = poly.create_job(project, dedicated, email=config['email'])
+        error = self.poly.create_job(self.project, dedicated, email=config['email'])
         if error:
             QMessageBox().critical(self, 'Error', error)
 
         self.update_project()
 
-    @_std_args
-    def dl_dedicated(self, _, poly, project):
-        if self.poly.dedicated(project):
+    def dl_dedicated(self):
+        if self.poly.dedicated(self.project):
             answer = QMessageBox.question(
                 self, 'Delete existing dedicated file?',
                 'This region already has a dedicated data file. Delete it and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_dedicated(project)
+            self.poly.delete_dedicated(self.project)
         self._create_job(dedicated=True)
 
-    @_std_args
-    def dl_tiles(self, _, poly, project):
-        if self.poly.ntiles(project) > 0:
+    def dl_tiles(self):
+        if self.poly.ntiles(self.project) > 0:
             answer = QMessageBox.question(
                 self, 'Disassociate existing tiles?',
                 'This region already has associated tiles. Disassociate them and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_tiles(project)
+            self.poly.delete_tiles(self.project)
         self._create_job(dedicated=False)
 
 
