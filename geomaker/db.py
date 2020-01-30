@@ -105,11 +105,11 @@ class Polygon(DeclarativeBase):
         cascade='save-update, merge, delete, delete-orphan',
     )
     assocs = orm.relationship(
-        'PolyTIFF', back_populates='polygon',
+        'PolyTIFF', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
     )
     jobs = orm.relationship(
-        'Job', order_by='Job.jobid', back_populates='polygon',
+        'Job', order_by='Job.jobid', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
     )
 
@@ -265,7 +265,7 @@ class Thumbnail(DeclarativeBase):
     filename = sql.Column(sql.String, nullable=False)
     project = sql.Column(sql.String, nullable=False)
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
-    polygon = orm.relationship('Polygon', back_populates='thumbnails')
+    polygon = orm.relationship('Polygon', back_populates='thumbnails', lazy='immediate')
 
 @sql.event.listens_for(Thumbnail, 'after_delete')
 def delete_thumbnail(mapper, connection, thumbnail):
@@ -279,7 +279,7 @@ class Point(DeclarativeBase):
     x = sql.Column(sql.Float, nullable=False)
     y = sql.Column(sql.Float, nullable=False)
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
-    polygon = orm.relationship('Polygon', back_populates='points')
+    polygon = orm.relationship('Polygon', back_populates='points', lazy='immediate')
 
     @property
     def z33n(self):
@@ -298,7 +298,7 @@ class GeoTIFF(DeclarativeBase):
     north = sql.Column(sql.Float, nullable=False)
 
     assocs = orm.relationship(
-        'PolyTIFF', back_populates='geotiff',
+        'PolyTIFF', back_populates='geotiff', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan',
     )
 
@@ -370,8 +370,8 @@ class PolyTIFF(DeclarativeBase):
     dedicated = sql.Column(sql.Boolean, nullable=False)
     project = sql.Column(sql.String, nullable=False)
 
-    polygon = orm.relationship('Polygon', back_populates='assocs')
-    geotiff = orm.relationship('GeoTIFF', back_populates='assocs')
+    polygon = orm.relationship('Polygon', back_populates='assocs', lazy='immediate')
+    geotiff = orm.relationship('GeoTIFF', back_populates='assocs', lazy='immediate')
 
 
 class Job(DeclarativeBase):
@@ -386,7 +386,7 @@ class Job(DeclarativeBase):
     error = sql.Column(sql.String, nullable=True)
     url = sql.Column(sql.String, nullable=True)
 
-    polygon = orm.relationship('Polygon', back_populates='jobs')
+    polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
     def refresh(self):
         code, response = make_request('exportStatus', {'JobID': self.jobid})
