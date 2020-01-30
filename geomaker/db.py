@@ -325,9 +325,9 @@ class GeoTIFF(DeclarativeBase):
         trf = data.GetGeoTransform()
         assert trf[2] == trf[4] == 0
         self.east = trf[0] + 0.5 * trf[1]
-        self.west = self.east + trf[1] * (nx - 1)
+        self.west = self.east + trf[1] * (ny - 1)
         self.north = trf[3] + 0.5 * trf[5]
-        self.south = trf[3] + trf[5] * (ny - 1)
+        self.south = self.north + trf[5] * (nx - 1)
 
     def interpolate(self, data, x, y):
         rx, ry = self.resolution
