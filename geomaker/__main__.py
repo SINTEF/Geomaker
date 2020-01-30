@@ -218,6 +218,7 @@ class PolyWidget(QWidget):
         self.tiles.linkActivated.connect(self.dl_tiles)
 
         self._add_row(label('Bomgobob'), attrname='image')
+        self.image.setMinimumSize(1, 1)
 
         self.box.addWidget(frame(QFrame.VLine), nrows_a + 2, 1, nrows_b - nrows_a - 2, 1)
         self.box.setRowStretch(nrows_b + 1, 1)
@@ -265,9 +266,7 @@ class PolyWidget(QWidget):
         thumb = self.poly.thumbnail(self.project)
         if thumb:
             pixmap = QPixmap(thumb.filename)
-            w = self.image.width()
-            h = max(w, int(w / pixmap.width() * pixmap.height()))
-            self.image.setPixmap(pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.image.setPixmap(pixmap.scaledToWidth(self.image.width(), Qt.SmoothTransformation))
         else:
             self.image.setPixmap(QPixmap())
 
