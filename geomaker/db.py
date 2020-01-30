@@ -524,6 +524,15 @@ class Database:
         self.commit()
         self.message('after_reset')
 
+    def update_points(self, lfid, data):
+        points = json.loads(data)['geometry']['coordinates'][0]
+        poly = self.poly_by_lfid(lfid)
+        with self.session() as s:
+            for point in poly.points:
+                s.delete(point)
+            for x, y in points:
+                s.add(Point(x=x, y=y, polygon=poly))
+
     def create(self, lfid, name, data):
         points = json.loads(data)['geometry']['coordinates'][0]
 

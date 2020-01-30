@@ -143,7 +143,7 @@ class JSInterface(QObject):
 
     @pyqtSlot(int, str)
     def edit_poly(self, lfid, data):
-        db.update(lfid, data)
+        db.update_points(lfid, data)
         db_widget.select(db.index(lfid=lfid))
 
     @pyqtSlot(int)
