@@ -13,7 +13,7 @@ from zipfile import ZipFile
 from area import area as geojson_area
 from matplotlib import cm as colormap
 import numpy as np
-from osgeo import gdal
+import tifffile as tif
 from PIL import Image
 import requests
 import toml
@@ -307,7 +307,7 @@ class GeoTIFF(DeclarativeBase):
 
     @lru_cache(maxsize=1)
     def dataset(self):
-        return gdal.Open(str(self.filename))
+        return tif.imread(str(self.filename))
 
     @property
     @lru_cache(maxsize=1)

@@ -21,7 +21,7 @@ setup(
     install_requires=[
         'area',
         'bidict',
-        'GDAL',
+        'tifffile',
         'matplotlib',
         'PyQt5',
         'PyQtWebEngine',
