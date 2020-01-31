@@ -38,7 +38,7 @@ function focus_object(lfid) {
     if (lfid >= 0) {
         map.fitBounds(drawnItems.getLayer(lfid).getBounds());
     }
-    else {
+    else if (drawnItems.getLayers().length > 0) {
         map.fitBounds(drawnItems.getBounds());
     }
 }
