@@ -306,39 +306,42 @@ class GeoTIFF(DeclarativeBase):
     )
 
     @lru_cache(maxsize=1)
-    def dataset(self):
-        return tif.imread(str(self.filename))
+    def _dataset(self):
+        return tif.TiffFile(str(self.filename))
+
+    @lru_cache(maxsize=1)
+    def as_array(self):
+        return self._dataset().asarray()
 
     @property
-    @lru_cache(maxsize=1)
     def shape(self):
-        return self.dataset().ReadAsArray().shape
+        return self.as_array().shape
 
     @property
-    @lru_cache(maxsize=1)
     def resolution(self):
-        _, rx, _, _, _, ry = self.dataset().GetGeoTransform()
-        return rx, -ry
+        rx, ry, _ = self._dataset().geotiff_metadata['ModelPixelScale']
+        return rx, ry
 
     def populate(self):
-        data = self.dataset()
+        rx, ry = self.resolution
         nx, ny = self.shape
+        i, j, k, x, y, z = self._dataset().geotiff_metadata['ModelTiepoint']
+
+        assert i == j == k == z == 0
 
         # Compute bounding box
-        trf = data.GetGeoTransform()
-        assert trf[2] == trf[4] == 0
-        self.east = trf[0] + 0.5 * trf[1]
-        self.west = self.east + trf[1] * (ny - 1)
-        self.north = trf[3] + 0.5 * trf[5]
-        self.south = self.north + trf[5] * (nx - 1)
+        self.west = x + 0.5 * rx
+        self.east = self.west + rx * (ny - 1)
+        self.north = y - 0.5 * ry
+        self.south = self.north - ry * (nx - 1)
 
     def interpolate(self, data, x, y):
         rx, ry = self.resolution
 
         # Mask of which indices apply to this TIFF
-        I, J = np.where((self.south <= x) & (x < self.north) & (self.east <= y) & (y < self.west))
+        I, J = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
         x = (self.north - x[I, J]) / rx
-        y = (y[I, J] - self.east) / ry
+        y = (y[I, J] - self.west) / ry
 
         # Compute indices of the element for each point
         left = np.floor(x).astype(int)
@@ -349,7 +352,7 @@ class GeoTIFF(DeclarativeBase):
         ref_down = y - down
 
         # Interpolate
-        refdata = self.dataset().ReadAsArray()
+        refdata = self.as_array()
         refdata[np.where(refdata < 0)] = 0
 
         data[I, J] = np.maximum(

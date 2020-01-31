@@ -21,12 +21,12 @@ setup(
     install_requires=[
         'area',
         'bidict',
-        'tifffile',
         'matplotlib',
         'PyQt5',
         'PyQtWebEngine',
         'requests',
         'SQLAlchemy',
+        'tifffile',
         'toml',
         'utm',
         'xdg',
