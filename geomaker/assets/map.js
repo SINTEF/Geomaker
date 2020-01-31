@@ -44,15 +44,6 @@ function focus_object(lfid) {
 }
 
 function initialize() {
-    // Interface to OpenStreetMap and Google Maps
-    var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    var osmAttrib = '&copy; <a href="http://openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-    var googleUrl = 'http://www.google.com/maps/vt?lyrs=p@189&gl=cn&x={x}&y={y}&z={z}';
-    var googleAttrib = '&copy; Google';
-
-    var osm = L.tileLayer(osmUrl, { maxZoom: 18, attribution: osmAttrib });
-    var google = L.tileLayer(googleUrl, { maxZoom: 18, attribution: googleAttrib });
-
     // Actual map object with drawn items
     map = new L.Map('map', {
         center: new L.LatLng(63.43011, 10.39478),
