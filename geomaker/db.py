@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from enum import IntEnum
-from functools import lru_cache
+from functools import lru_cache, partial, wraps
 import hashlib
 from io import BytesIO
 import json
@@ -65,6 +65,52 @@ def make_request(endpoint, params):
     if response.status_code != 200:
         return response.status_code, None
     return response.status_code, json.loads(response.text)
+
+
+def download_geotiffs(url, project, dedicated):
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+
+    filenames = []
+    with ZipFile(BytesIO(response.content), 'r') as z:
+        tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
+        if dedicated:
+            assert len(tifpaths) == 1
+
+        for path in tifpaths:
+            data = z.read(path)
+            if dedicated:
+                filename = hashlib.sha256(data).hexdigest() + '.tiff'
+            else:
+                filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
+            filename = DATA_ROOT / project / filename
+            with open(filename, 'wb') as f:
+                f.write(data)
+            filenames.append(filename)
+    return filenames
+
+
+class AsyncWorker:
+
+    def __init__(self, work, callback):
+        self.work = work
+        self.callback = callback
+
+    def __call__(self):
+        retval = self.work()
+        return partial(self.callback, retval)
+
+
+def async(func):
+    @wraps(func)
+    def wrapper(*args, async=False, **kwargs):
+        work, callback = func(*args, **kwargs)
+        if async:
+            return AsyncWorker(work, callback)
+        else:
+            return callback(work())
+    return wrapper
 
 
 class Config(dict):
@@ -147,44 +193,52 @@ class Polygon(DeclarativeBase):
         return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry)]})
 
     @contextmanager
-    def _assoc_query(self, cls, project, dedicated=None):
-        filters = [cls.polygon == self, cls.project == project]
-        if dedicated is not None:
-            filters.append(cls.dedicated == dedicated)
+    def _assoc_query(self, cls, **kwargs):
+        filters = [cls.polygon == self]
+        for key, value in kwargs.items():
+            filters.append(getattr(cls, key) == value)
         with db.session() as s:
             yield s.query(cls).filter(*filters)
 
-    def _single_assoc(self, cls, project, dedicated=None):
-        with self._assoc_query(cls, project, dedicated=dedicated) as q:
+    def _single_assoc(self, cls, **kwargs):
+        with self._assoc_query(cls, **kwargs) as q:
             return q.one_or_none()
 
     def thumbnail(self, project):
-        return self._single_assoc(Thumbnail, project)
+        return self._single_assoc(Thumbnail, project=project)
 
     def dedicated(self, project):
-        obj = self._single_assoc(PolyTIFF, project, True)
+        obj = self._single_assoc(PolyTIFF, project=project, dedicated=True)
         if obj:
             obj = obj.geotiff
         return obj
 
     def ntiles(self, project):
-        with self._assoc_query(PolyTIFF, project, False) as q:
+        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
             return q.count()
 
     def tiles(self, project):
-        with self._assoc_query(PolyTIFF, project, False) as q:
+        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
             for assoc in q:
                 yield assoc.geotiff
+
+    def delete_all_tiffs(self):
+        with self._assoc_query(PolyTIFF) as q:
+            q.delete()
 
     def delete_dedicated(self, project):
         db.delete_if(self.dedicated(project))
 
     def delete_tiles(self, project):
-        with self._assoc_query(PolyTIFF, project, dedicated=False) as q:
+        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
             q.delete()
 
+    def njobs(self, **kwargs):
+        with self._assoc_query(Job, **kwargs) as q:
+            return q.count()
+
     def job(self, project, dedicated):
-        return self._single_assoc(Job, project, dedicated)
+        return self._single_assoc(Job, project=project, dedicated=dedicated)
 
     def delete_job(self, project, dedicated):
         obj = self.job(project, dedicated)
@@ -394,8 +448,16 @@ class Job(DeclarativeBase):
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
+    @async
     def refresh(self):
-        code, response = make_request('exportStatus', {'JobID': self.jobid})
+        worker = partial(make_request, 'exportStatus', {'JobID': self.jobid})
+        callback = self.refresh_commit
+        return worker, callback
+
+    def refresh_commit(self, args):
+        if self.stage == 'downloaded':
+            return
+        code, response = args
         if response is None:
             self.stage = 'error'
             self.error = f'HTTP code {code}'
@@ -404,41 +466,31 @@ class Job(DeclarativeBase):
             if self.stage == 'complete':
                 self.url = response['Url']
         db.commit()
+        return (self.polygon, self.project)
 
+    @async
     def download(self):
         assert self.stage == 'complete'
         assert self.url is not None
+        worker = partial(download_geotiffs, self.url, self.project, self.dedicated)
+        callback = self.download_commit
+        return worker, callback
 
-        response = requests.get(self.url)
-        if response.status_code != 200:
-            self.stage = 'error'
-            self.error = f'HTTP code {code}'
-            return
+    def download_commit(self, filenames):
+        for filename in filenames:
+            geotiff = GeoTIFF(filename=str(filename))
+            geotiff.populate()
+            polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
+            with db.session() as s:
+                s.add(geotiff)
+                s.add(polytiff)
 
-        with ZipFile(BytesIO(response.content), 'r') as z:
-            tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
-            if self.dedicated:
-                assert len(tifpaths) == 1
-
-            for path in tifpaths:
-                data = z.read(path)
-                if self.dedicated:
-                    filename = hashlib.sha256(data).hexdigest() + '.tiff'
-                else:
-                    filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
-                filename = DATA_ROOT / self.project / filename
-                with open(filename, 'wb') as f:
-                    f.write(data)
-                geotiff = GeoTIFF(filename=str(filename))
-                geotiff.populate()
-                polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
-                with db.session() as s:
-                    s.add(geotiff)
-                    s.add(polytiff)
-
+        # TODO: Generate thumbnails asynchronously
         self.polygon.update_thumbnail(self.project, self.dedicated)
+        retval = (self.polygon, self.project)
         with db.session() as s:
             s.delete(self)
+        return retval
 
 
 class Database:
@@ -538,6 +590,8 @@ class Database:
                 s.delete(point)
             for x, y in points:
                 s.add(Point(x=x, y=y, polygon=poly))
+            poly.delete_all_tiffs()
+            poly.thumbnail = None
 
     def create(self, lfid, name, data):
         points = json.loads(data)['geometry']['coordinates'][0]

@@ -109,7 +109,7 @@ function initialize() {
             drawnItems.addLayer(event.layer);
             if (typeof Interface != 'undefined') {
                 var json = JSON.stringify(event.layer.toGeoJSON());
-                Interface.add_poly(event.layer._leaflet_id, json);
+                Interface.emit('polygon_added', event.layer._leaflet_id, json);
             }
         });
 
@@ -118,7 +118,7 @@ function initialize() {
             if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
                     var json = JSON.stringify(layer.toGeoJSON());
-                    Interface.edit_poly(layer._leaflet_id, json);
+                    Interface.emit('polygon_edited', layer._leaflet_id, json);
                 })
             }
         });
@@ -126,7 +126,7 @@ function initialize() {
         map.on('draw:deleted', function (event) {
             if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
-                    Interface.remove_poly(layer._leaflet_id);
+                    Interface.emit('polygon_deleted', layer._leaflet_id);
                 })
             }
         });
@@ -139,7 +139,7 @@ function initialize() {
                 deselect = true;
                 setTimeout(function () {
                     if (deselect) {
-                        Interface.select_poly(-1);
+                        Interface.emit('polygon_selected', -1);
                     }
                 }, 10);
             }
@@ -147,14 +147,14 @@ function initialize() {
 
         drawnItems.on('click', function (event) {
             if (typeof Interface != 'undefined') {
-                Interface.select_poly(event.layer._leaflet_id);
+                Interface.emit('polygon_selected', event.layer._leaflet_id);
                 deselect = false;
             }
         });
 
         drawnItems.on('dblclick', function (event) {
             if (typeof Interface != 'undefined') {
-                Interface.open_poly(event.layer._leaflet_id);
+                Interface.emit('polygon_double_clicked', event.layer._leaflet_id);
                 deselect = false;
             }
         })

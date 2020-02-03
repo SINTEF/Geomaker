@@ -3,86 +3,31 @@ from contextlib import contextmanager
 from os.path import dirname, realpath, join
 from operator import attrgetter
 import sys
-from string import ascii_lowercase
 import time
 
 from PyQt5.QtCore import (
-    Qt, QObject, QUrl, pyqtSlot, QAbstractListModel, QModelIndex, QVariant, QItemSelectionModel, QThread,
-    pyqtSignal
+    Qt, QObject, QAbstractListModel, QEvent, QItemSelectionModel,
+    QModelIndex, QThread, QUrl, QVariant, pyqtSignal, pyqtSlot,
 )
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QIcon, QKeyEvent
 from PyQt5.QtWebChannel import QWebChannel
-from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QMainWindow, QVBoxLayout, QGridLayout, QListView, QLabel, QInputDialog, QSplitter,
-    QFrame, QMessageBox, QComboBox, QPushButton, QTabWidget, QProgressDialog
+    QApplication, QDialog, QInputDialog, QMainWindow, QMessageBox, QProgressBar, QPushButton, QWidget,
 )
 
-from geomaker.db import PROJECTS, Polygon, Config, db
+from .ui.utils import key_to_text, angle_to_degrees
+from .db import PROJECTS, Polygon, Config, db
 
 
-KEY_MAP = {
-    Qt.Key_Space: 'SPC',
-    Qt.Key_Escape: 'ESC',
-    Qt.Key_Tab: 'TAB',
-    Qt.Key_Return: 'RET',
-    Qt.Key_Backspace: 'BSP',
-    Qt.Key_Delete: 'DEL',
-    Qt.Key_Up: 'UP',
-    Qt.Key_Down: 'DOWN',
-    Qt.Key_Left: 'LEFT',
-    Qt.Key_Right: 'RIGHT',
-    Qt.Key_Minus: '-',
-    Qt.Key_Plus: '+',
-    Qt.Key_Equal: '=',
-}
-KEY_MAP.update({
-    getattr(Qt, 'Key_{}'.format(s.upper())): s
-    for s in ascii_lowercase
-})
-KEY_MAP.update({
-    getattr(Qt, 'Key_F{}'.format(i)): '<f{}>'.format(i)
-    for i in range(1, 13)
-})
+class ProjectsModel(QAbstractListModel):
 
-def key_to_text(event):
-    ctrl = event.modifiers() & Qt.ControlModifier
-    shift = event.modifiers() & Qt.ShiftModifier
+    def rowCount(self, parent):
+        return len(PROJECTS)
 
-    try:
-        text = KEY_MAP[event.key()]
-    except KeyError:
-        return
-
-    if shift and text.isupper():
-        text = 'S-{}'.format(text)
-    elif shift:
-        text = text.upper()
-    if ctrl:
-        text = 'C-{}'.format(text)
-
-    return text
-
-
-def label(text):
-    label = QLabel()
-    label.setText(text)
-    return label
-
-
-def frame(orientation):
-    frame = QFrame()
-    frame.setFrameShape(orientation)
-    return frame
-
-
-def angle_to_degrees(angle, directions):
-    direction = directions[1 if angle > 0 else 0]
-    angle = abs(angle)
-    degrees, angle = divmod(angle, 1.0)
-    minutes, angle = divmod(60 * angle, 1.0)
-    seconds = 60 * angle
-    return f"{degrees:.0f}° {minutes:.0f}' {seconds:.3f}'' {direction}"
+    def data(self, index, role):
+        if role == Qt.DisplayRole:
+            return QVariant(PROJECTS[index.row()][1])
+        return QVariant()
 
 
 class DatabaseModel(QAbstractListModel):
@@ -130,346 +75,386 @@ class DatabaseModel(QAbstractListModel):
 
 class JSInterface(QObject):
 
-    def __init__(self):
-        super().__init__()
+    # Emitted whenever a new polygon is edited by leaflet
+    polygon_added = pyqtSignal(int, str)
 
-    @pyqtSlot(int, str)
-    def add_poly(self, lfid, data):
-        name, accept = QInputDialog.getText(main_widget, 'Name', 'Name this region:')
-        if accept:
-            db.create(lfid, name, data)
-            self.select_poly()
-            self.select_poly(lfid)
+    # Emitted whenever a polygon is selected in leaflet
+    polygon_selected = pyqtSignal(int)
 
-    @pyqtSlot(int, str)
-    def edit_poly(self, lfid, data):
-        db.update_points(lfid, data)
-        db_widget.select(db.index(lfid=lfid))
+    # Emitted whenever a polygon is double-clicked in leaflet
+    polygon_double_clicked = pyqtSignal(int)
 
-    @pyqtSlot(int)
-    def remove_poly(self, lfid):
-        db.delete(lfid)
+    # Emitted whenever a new polygon is edited by leaflet
+    polygon_edited = pyqtSignal(int, str)
 
-    @pyqtSlot(int)
-    def select_poly(self, lfid=-1):
-        if lfid < 0:
-            db_widget.unselect()
-        else:
-            db_widget.select(db.index(lfid=lfid))
+    # Emitted whenever a polygon was deleted by leaflet
+    polygon_deleted = pyqtSignal(int)
 
-    @pyqtSlot(int)
-    def open_poly(self, lfid):
-        main_widget.focus(lfid)
-
-    @pyqtSlot(str)
-    def print(self, s):
-        print(s)
+    # Every possible signal signature (with an added str in front)
+    # must be listed here.  This function is the only point of
+    # interaction visible from Javascript for emitting events.
+    @pyqtSlot(str, int)
+    @pyqtSlot(str, int, str)
+    def emit(self, name, *args):
+        getattr(self, name).emit(*args)
 
 
-class PolyWidget(QWidget):
+from geomaker.ui.interface import Ui_MainWindow
+from geomaker.ui.thumbnail import Ui_Thumbnail
+from geomaker.ui.jobdialog import Ui_JobDialog
 
-    def __init__(self):
-        super().__init__()
-        self.poly = None
-        self.setVisible(False)
-        self.create_ui()
 
-    def _add_row(self, widget, title=None, attrname=None, align=None):
-        if not hasattr(self, '_rows'):
-            self._rows = 0
-        if title is None:
-            if align is not None:
-                self.box.addWidget(widget, self._rows, 0, 1, 3, align)
-            else:
-                self.box.addWidget(widget, self._rows, 0, 1, 3)
-        else:
-            self.box.addWidget(title, self._rows, 0, Qt.AlignRight)
-            self.box.addWidget(widget, self._rows, 2, Qt.AlignLeft)
-        if attrname is not None:
-            setattr(self, attrname, widget)
-        self._rows += 1
-        return self._rows
+class JobDialog(QDialog):
 
-    def create_ui(self):
-        self.box = QGridLayout()
-        self.setLayout(self.box)
-
-        self._add_row(label(''), attrname='name', align=Qt.AlignCenter)
-        self._add_row(frame(QFrame.HLine))
-        self._add_row(label(''), title=label('West'), attrname='west')
-        self._add_row(label(''), title=label('East'), attrname='east')
-        self._add_row(label(''), title=label('South'), attrname='south')
-        self._add_row(label(''), title=label('North'), attrname='north')
-        nrows_a = self._add_row(label(''), title=label('Area'), attrname='area')
-        self.box.addWidget(frame(QFrame.VLine), 2, 1, nrows_a - 2, 1)
-
-        self._add_row(frame(QFrame.HLine))
-
-        combobox = QComboBox()
-        combobox.addItems(project for _, project in PROJECTS)
-        combobox.currentIndexChanged.connect(self.update_project)
-        self._add_row(combobox, attrname='project_chooser')
-        self._add_row(label(''), title=label('Dedicated'), attrname='dedicated')
-        nrows_b = self._add_row(label(''), title=label('Tiles'), attrname='tiles')
-
-        self.dedicated.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        self.dedicated.linkActivated.connect(self.dl_dedicated)
-        self.tiles.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        self.tiles.linkActivated.connect(self.dl_tiles)
-
-        self._add_row(label('Bomgobob'), attrname='image')
-        self.image.setMinimumSize(1, 1)
-
-        self.box.addWidget(frame(QFrame.VLine), nrows_a + 2, 1, nrows_b - nrows_a - 2, 1)
-        self.box.setRowStretch(nrows_b + 1, 1)
-
-    def show(self, poly=None):
+    def __init__(self, poly, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.poly = poly
 
-        if poly is None:
-            self.setVisible(False)
-            return
-        self.setVisible(True)
-        self.name.setText(f'<strong>{poly.name}</strong>')
-        self.west.setText(f'{poly.west:.4f} ({angle_to_degrees(poly.west, "WE")})')
-        self.east.setText(f'{poly.east:.4f} ({angle_to_degrees(poly.east, "WE")})')
-        self.south.setText(f'{poly.south:.4f} ({angle_to_degrees(poly.south, "SN")})')
-        self.north.setText(f'{poly.north:.4f} ({angle_to_degrees(poly.north, "SN")})')
-        self.area.setText(f'{poly.area/1000000:.3f} km<sup>2</sup>')
+        self.ui = Ui_JobDialog()
+        self.ui.setupUi(self)
 
-        self.update_project()
+        self.ui.email.setText(config['email'])
+        self.ui.projectlist.setModel(ProjectsModel())
 
-    @property
-    def project(self):
-        return PROJECTS[self.project_chooser.currentIndex()][0]
+    def done(self, result):
+        project, _ = PROJECTS[self.ui.projectlist.selectedIndexes()[0].row()]
+        dedicated = self.ui.dedicated.checkState() == Qt.Checked
 
-    def update_project(self):
-        if self.poly.dedicated(self.project):
-            text = 'Yes'
-        elif self.poly.job(self.project, True):
-            job = self.poly.job(self.project, True)
-            text = f'Exporting ({job.stage})'
-        else:
-            text = 'No'
-        self.dedicated.setText(f'{text} (<a href="dl">download</a>)')
+        # Set these attributes so that the caller can access them
+        self.project = project
+        self.dedicated = dedicated
 
-        ntiles = self.poly.ntiles(self.project)
-        if ntiles > 0:
-            text = str(ntiles)
-        elif self.poly.job(self.project, False):
-            job = self.poly.job(self.project, False)
-            text = f'Exporting ({job.stage})'
-        else:
-            text = 'No'
-        self.tiles.setText(f'{text} (<a href="dl">download</a>)')
+        if result != QDialog.Accepted:
+            return super().done(result)
 
-        thumb = self.poly.thumbnail(self.project)
-        if thumb:
-            pixmap = QPixmap(thumb.filename)
-            self.image.setPixmap(pixmap.scaledToWidth(self.image.width(), Qt.SmoothTransformation))
-        else:
-            self.image.setPixmap(QPixmap())
-
-    def _create_job(self, dedicated):
-        if self.poly.job(self.project, dedicated):
-            answer = QMessageBox.question(
-                self, 'Delete existing job?',
-                'This region already has a job of this type. Delete it and restart?'
-            )
-            if answer == QMessageBox.No:
-                return
-            self.poly.delete_job(dedicated)
-
-        error = self.poly.create_job(self.project, dedicated, email=config['email'])
-        if error:
-            QMessageBox().critical(self, 'Error', error)
-
-        self.update_project()
-
-    def dl_dedicated(self):
-        if self.poly.dedicated(self.project):
+        if dedicated and self.poly.dedicated(project):
             answer = QMessageBox.question(
                 self, 'Delete existing dedicated file?',
                 'This region already has a dedicated data file. Delete it and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_dedicated(self.project)
-        self._create_job(dedicated=True)
+            self.poly.delete_dedicated(project)
 
-    def dl_tiles(self):
-        if self.poly.ntiles(self.project) > 0:
+        if not dedicated and self.poly.ntiles(project) > 0:
             answer = QMessageBox.question(
                 self, 'Disassociate existing tiles?',
                 'This region already has associated tiles. Disassociate them and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_tiles(self.project)
-        self._create_job(dedicated=False)
+            self.poly.delete_tiles(project)
+
+        if self.poly.job(project, dedicated):
+            answer = QMessageBox.question(
+                self, 'Delete existing job?',
+                'This region already has a job of this type. Delete it and restart?'
+            )
+            if answer == QMessageBox.No:
+                return
+            self.poly.delete_job(project, dedicated)
+
+        self.poly.create_job(project, dedicated, self.ui.email.text())
+        return super().done(QDialog.Accepted)
 
 
-class DatabaseWidget(QSplitter):
+class ThumbnailWidget(QWidget):
+
+    def __init__(self, project, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._project = project
+
+        self.ui = Ui_Thumbnail()
+        self.ui.setupUi(self)
+
+    def update_poly(self, poly):
+        thumb = poly.thumbnail(self._project)
+        if thumb is not None:
+            pixmap = QPixmap(thumb.filename)
+            self.ui.thumbnail.setPixmap(pixmap.scaledToWidth(
+                self.ui.thumbnail.width(), Qt.SmoothTransformation
+            ))
+            return
+        self.ui.thumbnail.setPixmap(QPixmap())
+        if poly.njobs(project=self._project) > 0:
+            self.ui.thumbnail.setText(f'A job for {self._project} is currently running')
+
+
+class KeyFilter(QObject):
+
+    def __init__(self, ui):
+        super().__init__()
+        self.ui = ui
+
+    def eventFilter(self, obj, event):
+        if not isinstance(event, QKeyEvent) or event.type() != QEvent.KeyPress:
+            return super().eventFilter(obj, event)
+        text = key_to_text(event)
+        if text == '<f5>':
+            self.ui.update_jobs()
+        else:
+            return super().eventFilter(obj, event)
+        return True
+
+
+class GUI(Ui_MainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setOrientation(Qt.Vertical)
-        self.create_ui()
 
-    def create_ui(self):
-        top = QWidget()
-        box = QVBoxLayout()
-        top.setLayout(box)
+        self._poly = None
+        self._project_tabs = {}
 
-        box.addWidget(label('<strong>Stored regions</strong>'))
+        self._thread = None
+        self._worker = None
+        self._continue = None
 
-        self.listview = QListView()
-        self.listview.setModel(DatabaseModel(db))
-        self.listview.selectionModel().selectionChanged.connect(self.selection_changed)
-        self.listview.doubleClicked.connect(self.list_double_clicked)
-        self.listview.setEditTriggers(QListView.EditKeyPressed | QListView.SelectedClicked)
-        box.addWidget(self.listview)
+        self.main = QMainWindow()
+        self.setupUi(self.main)
+        self.main.showMaximized()
 
-        self.addWidget(top)
+    def setupUi(self, main):
+        super().setupUi(main)
+        self.polydetails.hide()
 
-        self.poly = PolyWidget()
-        self.addWidget(self.poly)
+        # The JS-Python interface allows us to capture events from JS
+        self.js_interface = JSInterface()
+        self.js_interface.polygon_added.connect(self.webview_polygon_added)
+        self.js_interface.polygon_selected.connect(self.webview_selection_changed)
+        self.js_interface.polygon_double_clicked.connect(self.webview_double_clicked)
+        self.js_interface.polygon_edited.connect(self.webview_polygon_edited)
+        self.js_interface.polygon_deleted.connect(self.webview_polygon_deleted)
 
-    def unselect(self):
-        selection_model = self.listview.selectionModel()
-        selection_model.select(QModelIndex(), QItemSelectionModel.SelectCurrent)
+        # Web view that exposes the interface to JS via a QWebChannel
+        self.channel = QWebChannel()
+        self.channel.registerObject('Interface', self.js_interface)
+        self.webview.page().setWebChannel(self.channel)
+        html = join(dirname(realpath(__file__)), "assets/map.html")
+        self.webview.setUrl(QUrl.fromLocalFile(html))
+        self.webview.loadFinished.connect(self.webview_finished_load)
 
-    def select(self, row):
-        selection_model = self.listview.selectionModel()
-        index = self.listview.model().index(row, 0, QModelIndex())
+        # Polygon list item model and events
+        self.polylist.setModel(DatabaseModel(db))
+        self.polylist.selectionModel().selectionChanged.connect(self.polylist_selection_changed)
+        self.polylist.doubleClicked.connect(self.polylist_double_clicked)
+
+        # Create thumbnail widgets for each project
+        for project, _ in PROJECTS:
+            self._project_tabs[project] = ThumbnailWidget(project)
+
+        # New job button
+        self.downloadbtn = QPushButton()
+        icon = QIcon()
+        icon.addPixmap(QPixmap(':/icons/download.png'), QIcon.Normal, QIcon.On)
+        self.downloadbtn.setIcon(icon)
+        self.projects.setCornerWidget(self.downloadbtn, Qt.TopRightCorner)
+        self.downloadbtn.clicked.connect(self.start_new_job)
+
+        # Keys
+        self.keyfilter = KeyFilter(self)
+        main.installEventFilter(self.keyfilter)
+
+        # Progress in status bar
+        self.progress = QProgressBar()
+        self.progress.setMinimum(0)
+        self.statusbar.addWidget(self.progress, 1)
+
+    @property
+    def poly(self):
+        return self._poly
+
+    @poly.setter
+    def poly(self, poly):
+        self._poly = poly
+        if poly is None:
+            self.polydetails.hide()
+            return
+        self.polydetails.show()
+
+        self.polydetails.setTitle(poly.name)
+        self.west.setText(f'{poly.west:.4f} ({angle_to_degrees(poly.west, "WE")})')
+        self.east.setText(f'{poly.east:.4f} ({angle_to_degrees(poly.east, "WE")})')
+        self.south.setText(f'{poly.south:.4f} ({angle_to_degrees(poly.south, "SN")})')
+        self.north.setText(f'{poly.north:.4f} ({angle_to_degrees(poly.north, "SN")})')
+        self.area.setText(f'{poly.area/1000000:.3f} km<sup>2</sup>')
+
+        # Remove existing project tabs and add new ones
+        # Attempt to keep the current tab on the same project if possible
+        selected_widget = self.projects.currentWidget()
+        while self.projects.count() > 0:
+            self.projects.removeTab(0)
+        for project, _ in PROJECTS:
+            self.refresh_tabs_hint(project, select=False)
+            self._project_tabs[project].update_poly(poly)
+        new_index = max(0, self.projects.indexOf(selected_widget))
+        self.projects.setCurrentIndex(new_index)
+
+    def refresh_tabs_hint(self, project, select=True):
+        activate = self.poly.thumbnail(project) or self.poly.njobs(project=project) > 0
+        widget = self._project_tabs[project]
+        index = self.projects.indexOf(widget)
+
+        # The page activation state is up to date
+        if activate == index > -1:
+            if activate and select:
+                self.projects.setCurrentIndex(index)
+            return
+
+        # The page must be removed
+        if not activate:
+            self.projects.removeTab(index)
+            self.projects.setCurrentIndex(0)
+            return
+
+        # The page must be added
+        insertion_index = sum(
+            1 for proj, page in self._project_tabs.items()
+            if proj < project and self.projects.indexOf(page) > -1
+        )
+        self.projects.insertTab(insertion_index, widget, project)
+        if select:
+            self.projects.setCurrentIndex(insertion_index)
+
+    def js(self, code, callback=None):
+        if callback is None:
+            self.webview.page().runJavaScript(code)
+        else:
+            self.webview.page().runJavaScript(code, callback)
+
+    def webview_finished_load(self):
+        for poly in db:
+            points = str(list(poly.geometry))
+            self.js(f'add_object({points})', functools.partial(Polygon.lfid.fset, poly))
+        self.webview.page().runJavaScript('focus_object(-1)')
+
+    def webview_selection_changed(self, lfid):
+        if lfid < 0:
+            index = QModelIndex()
+        else:
+            index = self.polylist.model().index(db.index(lfid=lfid), 0, QModelIndex())
+        selection_model = self.polylist.selectionModel()
         selection_model.select(index, QItemSelectionModel.SelectCurrent)
 
-    def selection_changed(self, selected, deselected):
+    def webview_double_clicked(self, lfid):
+        self.js(f'focus_object({lfid})')
+
+    def webview_polygon_added(self, lfid, data):
+        name, accept = QInputDialog.getText(self.main, 'Name', 'Name this region:')
+        if accept:
+            db.create(lfid, name, data)
+            self.webview_selection_changed(lfid)
+
+    def webview_polygon_edited(self, lfid, data):
+        db.update_points(lfid, data)
+        self.webview_selection_changed(lfid)
+
+    def webview_polygon_deleted(self, lfid):
+        db.delete(lfid)
+
+    def polylist_selection_changed(self, selected, deselected):
         try:
             index = selected.indexes()[0]
         except IndexError:
-            main_widget.set_selected()
-            self.poly.show()
+            self.js('select_object(-1)')
+            self.poly = None
             return
         poly = db[index.row()]
-        main_widget.set_selected(poly.lfid)
-        self.poly.show(poly)
+        self.js(f'select_object({poly.lfid})')
+        self.poly = poly
 
-    def list_double_clicked(self, item):
-        main_widget.focus(db[item.row()].lfid)
+    def polylist_double_clicked(self, item):
+        poly = db[item.row()]
+        self.js(f'focus_object({poly.lfid})')
 
+    def project_tab_clicked(self, index):
+        if index == self.projects.count() - 1:
+            self.start_new_job()
 
-class MainWidget(QSplitter):
-
-    def __init__(self):
-        super().__init__()
-        self.create_ui()
-
-    def create_ui(self):
-        self.view = QWebEngineView()
-        self.view.loadFinished.connect(self.add_polys)
-
-        self.channel = QWebChannel()
-        self.channel.registerObject('Interface', interface)
-        self.view.page().setWebChannel(self.channel)
-
-        html = join(dirname(realpath(__file__)), "assets/map.html")
-        self.view.setUrl(QUrl.fromLocalFile(html))
-
-        self.addWidget(self.view)
-
-        self.tabview = QTabWidget()
-        self.addWidget(self.tabview)
-
-        self.tabview.addTab(db_widget, 'Regions')
-
-    def add_polys(self):
-        for poly in db:
-            points = str(list(poly.geometry))
-            self.view.page().runJavaScript(
-                f'add_object({points})',
-                functools.partial(Polygon.lfid.fset, poly)
-            )
-            self.view.page().runJavaScript('focus_object(-1)')
-
-    def set_selected(self, lfid=-1):
-        self.view.page().runJavaScript(f'select_object({lfid})')
-
-    def focus(self, lfid):
-        self.view.page().runJavaScript(f'focus_object({lfid})')
-
-
-def progress(items, desc, length=None):
-    if length is None:
-        length = len(items)
-    if length == 0:
-        return
-
-    progress = QProgressDialog(desc, 'Cancel', 0, length, main_window)
-    progress.setValue(0)
-    progress.setWindowTitle('GeoMaker')
-    progress.setWindowModality(Qt.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.show()
-
-    # This is incredibly hacky, but seems to be necessary
-    # to get the progress dialog to draw at 0%
-    # TODO: Figure out a way to get rid of this
-    for _ in range(10):
-        app.processEvents()
-        time.sleep(0.01)
-
-    for i, item in enumerate(items):
-        app.processEvents()
-        progress.setValue(i)
-        if progress.wasCanceled():
+    def start_new_job(self):
+        if self.poly is None:
             return
-        yield item
-    else:
-        progress.setValue(progress.maximum())
+        dialog = JobDialog(self.poly)
+        retval = dialog.exec_()
+        if retval == QDialog.Accepted:
+            self.refresh_tabs_hint(dialog.project)
+
+    def run_thread(self, jobs, text, cont=None):
+        assert not self._thread
+        if len(jobs) == 0:
+            if cont is not None:
+                cont()
+            return
+
+        thread = QThread()
+        worker = Worker(jobs)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.process)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._thread_finished)
+        worker.callback.connect(self._thread_callback)
+
+        self._thread = thread
+        self._worker = worker
+        self._continue = cont
+
+        self.progress.setMaximum(len(jobs))
+        self.progress.setValue(0)
+        self.progress.setFormat(f'{text} (%v/{len(jobs)} · %p%)')
+
+        thread.start()
+
+    def _thread_callback(self, result):
+        poly, project = result()
+        if poly is self.poly:
+            self._project_tabs[project].update_poly(poly)
+            self.refresh_tabs_hint(project, select=False)
+        self.progress.setValue(self.progress.value() + 1)
+
+    def _thread_finished(self):
+        self._worker = None
+        self._thread = None
+        self.progress.setValue(0)
+        self.progress.setMaximum(1)
+        self.progress.setFormat('')
+        if self._continue is not None:
+            self._continue()
+
+    def update_jobs(self):
+        self.run_thread(
+            [job.refresh(async=True) for job in db.jobs()],
+            'Refreshing jobs', cont=self.download_jobs,
+        )
+
+    def download_jobs(self):
+        self.run_thread(
+            [job.download(async=True) for job in db.jobs(stage='complete')],
+            'Downloading jobs',
+        )
 
 
-class MainWindow(QMainWindow):
+class Worker(QObject):
 
-    def __init__(self):
+    finished = pyqtSignal()
+    callback = pyqtSignal(object)
+    progress = pyqtSignal(int, int)
+
+    def __init__(self, workers):
         super().__init__()
-        self.setWindowTitle('GeoMaker')
-        self.setCentralWidget(main_widget)
+        self.workers = workers
 
-    def showMaximized(self):
-        super().showMaximized()
-        config.verify(self)
-
-    def message(self, title, msg):
-        QMessageBox.information(self, title, msg)
-
-    def query_str(self, title, msg):
-        name, _ = QInputDialog.getText(self, title, msg)
-        return name
-
-    def keyPressEvent(self, event):
-        text = key_to_text(event)
-        if text == 'DEL':
-            print('delete')
-        elif text == '<f5>':
-            with db.session() as s:
-                for job in progress(db.jobs(), 'Refreshing jobs...', length=db.njobs()):
-                    job.refresh()
-                for job in progress(db.jobs(stage='complete'), 'Downloading data...', length=db.njobs(stage='complete')):
-                    job.download()
-            db_widget.poly.update_project()
+    @pyqtSlot()
+    def process(self):
+        for worker in self.workers:
+            self.callback.emit(worker())
+        self.finished.emit()
 
 
 def main():
-    global app, config, db_widget, interface, main_widget, main_window
-
+    global config
     config = Config()
 
     app = QApplication(sys.argv)
-    db_widget = DatabaseWidget()
-    interface = JSInterface()
-    main_widget = MainWidget()
-    main_window = MainWindow()
-
-    main_window.showMaximized()
+    gui = GUI()
     sys.exit(app.exec_())
