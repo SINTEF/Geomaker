@@ -368,7 +368,7 @@ class GUI(Ui_MainWindow):
             self.refresh_tabs_hint(dialog.project)
 
     def run_thread(self, jobs, text, cont=None):
-        """Run a number of jobs asyncrhonously.
+        """Run a number of jobs asynchronously.
 
         Each element of 'jobs' must be a function-like object which
         will be called in a separate thread. The return value must be
@@ -381,7 +381,13 @@ class GUI(Ui_MainWindow):
         """
 
         # Only one asynchronous job at a time
-        assert not self._thread
+        if self._thread:
+            QMessageBox.critical(
+                self.main, 'Job already running',
+                'Geomaker is already processing in the background. ' +
+                'Wait until it has finished before starting another.'
+            )
+            return
 
         # Shortcut in case there are no jobs
         if len(jobs) == 0:
@@ -425,7 +431,7 @@ class GUI(Ui_MainWindow):
             self.refresh_tabs_hint(project, select=False)
         self.progress.setValue(self.progress.value() + 1)
 
-    # Called whenevre the currently working thread has finished all its jobs
+    # Called whenever the currently working thread has finished all its jobs
     # This resets the progress bar and calls the continuation function, if given
     def _thread_finished(self):
         self._worker = None
