@@ -24,6 +24,7 @@ setup(
         'matplotlib',
         'PyQt5',
         'PyQtWebEngine',
+        'numpy',
         'requests',
         'SQLAlchemy',
         'tifffile',
