@@ -35,4 +35,5 @@ class QResizeLabel(QLabel):
         if self._pixmap.isNull():
             super().setPixmap(self._pixmap)
         else:
-            super().setPixmap(self._pixmap.scaledToWidth(self.width(), Qt.SmoothTransformation))
+            pixmap = self._pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            super().setPixmap(pixmap)
