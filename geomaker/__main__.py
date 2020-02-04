@@ -268,6 +268,10 @@ class GUI(Ui_MainWindow):
         widget = self._project_tabs[project]
         index = self.projects.indexOf(widget)
 
+        # Make sure the widget itself is up to date
+        if activate:
+            widget.update_poly(self.poly)
+
         # The page activation state is up to date
         if activate == index > -1:
             if activate and select:
