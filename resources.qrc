@@ -3,5 +3,6 @@
 <RCC version="1.0">
   <qresource>
     <file>icons/download.png</file>
+    <file>icons/refresh.png</file>
   </qresource>
 </RCC>

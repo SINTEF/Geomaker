@@ -209,13 +209,9 @@ class GUI(Ui_MainWindow):
         for project, _ in PROJECTS:
             self._project_tabs[project] = ThumbnailWidget(project)
 
-        # New job button
-        self.downloadbtn = QPushButton()
-        icon = QIcon()
-        icon.addPixmap(QPixmap(':/icons/download.png'), QIcon.Normal, QIcon.On)
-        self.downloadbtn.setIcon(icon)
-        self.projects.setCornerWidget(self.downloadbtn, Qt.TopRightCorner)
+        # Main control buttons
         self.downloadbtn.clicked.connect(self.start_new_job)
+        self.refreshbtn.clicked.connect(self.update_jobs)
 
         # Keys
         self.keyfilter = KeyFilter(self)
@@ -236,8 +232,10 @@ class GUI(Ui_MainWindow):
         self._poly = poly
         if poly is None:
             self.polydetails.hide()
+            self.downloadbtn.setEnabled(False)
             return
         self.polydetails.show()
+        self.downloadbtn.setEnabled(True)
 
         self.polydetails.setTitle(poly.name)
         self.west.setText(f'{poly.west:.4f} ({angle_to_degrees(poly.west, "WE")})')
