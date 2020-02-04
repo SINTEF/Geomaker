@@ -297,6 +297,7 @@ class Polygon(DeclarativeBase):
     def delete_dedicated(self, project):
         """Remove the dedicated GeoTIFF file associated with a project."""
         db.delete_if(self.dedicated(project))
+        self.maybe_delete_thumbnail(project)
 
     def delete_tiles(self, project):
         """Remove the non-dedicated GeoTIFF files associated with a
@@ -305,6 +306,7 @@ class Polygon(DeclarativeBase):
         """
         with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
             q.delete()
+        self.maybe_delete_thumbnail(project)
 
     def njobs(self, **kwargs):
         """The number of jobs currently running matching the keyword argument filters."""
@@ -354,6 +356,11 @@ class Polygon(DeclarativeBase):
         job = Job(polygon=self, project=project, dedicated=dedicated, jobid=response['JobID'])
         with db.session() as s:
             s.add(job)
+
+    def maybe_delete_thumbnail(self, project):
+        if self.dedicated(project) or self.ntiles(project) > 0:
+            return
+        db.delete_if(self.thumbnail(project))
 
     def update_thumbnail(self, project, dedicated):
         """Update the thumbnail for the given project.
