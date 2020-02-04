@@ -4,5 +4,6 @@
   <qresource>
     <file>icons/download.png</file>
     <file>icons/refresh.png</file>
+    <file>icons/export.png</file>
   </qresource>
 </RCC>
