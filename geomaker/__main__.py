@@ -107,7 +107,10 @@ class JobDialog(QDialog):
                 return
             self.poly.delete_job(project, dedicated)
 
-        self.poly.create_job(project, dedicated, self.ui.email.text())
+        retval = self.poly.create_job(project, dedicated, self.ui.email.text())
+        if retval:
+            QMessageBox.critical(self, 'Error', retval)
+            return
         return super().done(QDialog.Accepted)
 
 
