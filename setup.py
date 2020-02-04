@@ -11,7 +11,7 @@ setup(
     author_email='evfonn@gmail.com',
     license='GPL3',
     url='https://github.com/TheBB/geomaker',
-    packages=find_packages(include=['geomaker']),
+    packages=find_packages(),
     package_data={
         'geomaker': ['assets/map.html', 'assets/map.js'],
     },

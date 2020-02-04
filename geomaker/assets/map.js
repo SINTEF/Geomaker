@@ -38,21 +38,12 @@ function focus_object(lfid) {
     if (lfid >= 0) {
         map.fitBounds(drawnItems.getLayer(lfid).getBounds());
     }
-    else {
+    else if (drawnItems.getLayers().length > 0) {
         map.fitBounds(drawnItems.getBounds());
     }
 }
 
 function initialize() {
-    // Interface to OpenStreetMap and Google Maps
-    var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    var osmAttrib = '&copy; <a href="http://openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-    var googleUrl = 'http://www.google.com/maps/vt?lyrs=p@189&gl=cn&x={x}&y={y}&z={z}';
-    var googleAttrib = '&copy; Google';
-
-    var osm = L.tileLayer(osmUrl, { maxZoom: 18, attribution: osmAttrib });
-    var google = L.tileLayer(googleUrl, { maxZoom: 18, attribution: googleAttrib });
-
     // Actual map object with drawn items
     map = new L.Map('map', {
         center: new L.LatLng(63.43011, 10.39478),
@@ -118,7 +109,7 @@ function initialize() {
             drawnItems.addLayer(event.layer);
             if (typeof Interface != 'undefined') {
                 var json = JSON.stringify(event.layer.toGeoJSON());
-                Interface.add_poly(event.layer._leaflet_id, json);
+                Interface.emit('polygon_added', event.layer._leaflet_id, json);
             }
         });
 
@@ -127,7 +118,7 @@ function initialize() {
             if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
                     var json = JSON.stringify(layer.toGeoJSON());
-                    Interface.edit_poly(layer._leaflet_id, json);
+                    Interface.emit('polygon_edited', layer._leaflet_id, json);
                 })
             }
         });
@@ -135,7 +126,7 @@ function initialize() {
         map.on('draw:deleted', function (event) {
             if (typeof Interface != 'undefined') {
                 event.layers.eachLayer(function (layer) {
-                    Interface.remove_poly(layer._leaflet_id);
+                    Interface.emit('polygon_deleted', layer._leaflet_id);
                 })
             }
         });
@@ -148,7 +139,7 @@ function initialize() {
                 deselect = true;
                 setTimeout(function () {
                     if (deselect) {
-                        Interface.select_poly(-1);
+                        Interface.emit('polygon_selected', -1);
                     }
                 }, 10);
             }
@@ -156,14 +147,14 @@ function initialize() {
 
         drawnItems.on('click', function (event) {
             if (typeof Interface != 'undefined') {
-                Interface.select_poly(event.layer._leaflet_id);
+                Interface.emit('polygon_selected', event.layer._leaflet_id);
                 deselect = false;
             }
         });
 
         drawnItems.on('dblclick', function (event) {
             if (typeof Interface != 'undefined') {
-                Interface.open_poly(event.layer._leaflet_id);
+                Interface.emit('polygon_double_clicked', event.layer._leaflet_id);
                 deselect = false;
             }
         })
