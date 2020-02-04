@@ -154,12 +154,17 @@ class TomlFile(dict):
         super().__init__()
         if filename.exists():
             with open(filename, 'r') as f:
-                self.update(toml.load(f))
+                self.update(toml.load(f), write=False)
         self.filename = filename
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         self.write()
+
+    def update(self, other, write=True):
+        super().update(other)
+        if write:
+            self.write()
 
     def write(self):
         with open(self.filename, 'w') as f:
