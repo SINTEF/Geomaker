@@ -37,6 +37,9 @@ for d in [DATA_ROOT, THUMBNAIL_ROOT]:
 # Config file
 CONFIG_FILE = XDG_CONFIG_HOME / 'geomaker.toml'
 
+# Data file
+DATA_FILE = DATA_ROOT / 'geomaker.toml'
+
 # Projects
 PROJECTS = [
     ('DTM50', 'Terrain model (50 m)'),
@@ -144,16 +147,32 @@ def async(func):
     return wrapper
 
 
-class Config(dict):
+class TomlFile(dict):
+    """TOML file mapped as a dict."""
+
+    def __init__(self, filename):
+        super().__init__()
+        if filename.exists():
+            with open(filename, 'r') as f:
+                self.update(toml.load(f))
+        self.filename = filename
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.write()
+
+    def write(self):
+        with open(self.filename, 'w') as f:
+            toml.dump(self, f)
+
+
+class Config(TomlFile):
     """Geomaker config file mapped to a dict.
     Usually found at ~/.config/geomaker.toml.
     """
 
     def __init__(self):
-        super().__init__()
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r') as f:
-                self.update(toml.load(f))
+        super().__init__(CONFIG_FILE)
 
     def verify(self, querier):
         if not 'email' in self:
@@ -162,11 +181,15 @@ class Config(dict):
                 'An e-mail address must be configured to make requests to the Norwegian Mapping Authority',
             )
             self['email'] = querier.query_str('E-mail address', 'E-mail:')
-        self.write()
 
-    def write(self):
-        with open(CONFIG_FILE, 'w') as f:
-            toml.dump(self, f)
+
+class Data(TomlFile):
+    """Geomaker data file mapped to a dict.
+    Usually found at ~/.local/share/geomaker/geomaker.toml
+    """
+
+    def __init__(self):
+        super().__init__(DATA_FILE)
 
 
 class Polygon(DeclarativeBase):

@@ -499,8 +499,9 @@ class Worker(QObject):
 def main():
     """Primary GUI entry point."""
 
-    global config
+    global config, data
     config = Config()
+    data = Data()
 
     app = QApplication(sys.argv)
     gui = GUI()
