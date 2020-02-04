@@ -121,13 +121,13 @@ class ThumbnailWidget(QWidget):
 
     def __init__(self, project, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._project = project
+        self.project = project
 
         self.ui = Ui_Thumbnail()
         self.ui.setupUi(self)
 
     def update_poly(self, poly):
-        thumb = poly.thumbnail(self._project)
+        thumb = poly.thumbnail(self.project)
         if thumb is not None:
             pixmap = QPixmap(thumb.filename)
             self.ui.thumbnail.setPixmap(pixmap.scaledToWidth(
@@ -135,7 +135,7 @@ class ThumbnailWidget(QWidget):
             ))
             return
         self.ui.thumbnail.setPixmap(QPixmap())
-        if poly.njobs(project=self._project) > 0:
+        if poly.njobs(project=self.project) > 0:
             self.ui.thumbnail.setText(f'A job for {self._project} is currently running')
         else:
             self.ui.thumbnail.setText('No jobs running')
@@ -211,6 +211,7 @@ class GUI(Ui_MainWindow):
         # Create thumbnail widgets for each project
         for project, _ in PROJECTS:
             self._project_tabs[project] = ThumbnailWidget(project)
+        self.projects.currentChanged.connect(self.project_tab_changed)
 
         # Main control buttons
         self.downloadbtn.clicked.connect(self.start_new_job)
@@ -301,6 +302,15 @@ class GUI(Ui_MainWindow):
             self.webview.page().runJavaScript(code)
         else:
             self.webview.page().runJavaScript(code, callback)
+
+    # When the project tab changes, update the enabled state of the export button
+    def project_tab_changed(self, index):
+        if self.poly is None or index == -1:
+            self.exportbtn.setEnabled(False)
+            return
+        project = self.projects.widget(index).project
+        has_data = self.poly.dedicated(project) or self.poly.ntiles(project) > 0
+        self.exportbtn.setEnabled(bool(has_data))
 
     # When the web page has finished loading we can add the existing polygons
     # This will fail if done too soon
