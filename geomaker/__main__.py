@@ -183,6 +183,8 @@ class GUI(Ui_MainWindow):
         self.setupUi(self.main)
         self.main.showMaximized()
 
+        config.verify(self)
+
     def setupUi(self, main):
         super().setupUi(main)
         self.polydetails.hide()
@@ -381,6 +383,14 @@ class GUI(Ui_MainWindow):
         retval = dialog.exec_()
         if retval == QDialog.Accepted:
             self.refresh_tabs_hint(dialog.project)
+
+    # Callbacks for the Config.verify function
+    def message(self, title, text):
+        QMessageBox.information(self.main, title, text)
+
+    def query_str(self, title, text):
+        name, accept = QInputDialog.getText(self.main, title, text)
+        return name
 
     def run_thread(self, jobs, text, cont=None):
         """Run a number of jobs asynchronously.
