@@ -3,18 +3,19 @@ PYRCC ?= pyrcc5
 PYUIC_FLAGS ?= --from-imports
 PYRCC_FLAGS ?=
 
+INDIR = gui
 OUTDIR = geomaker/ui
 
 GUI_FILES = interface.ui thumbnail.ui jobdialog.ui
-RESOURCE_FILE = resources.qrc
+RESOURCE_FILE = ${INDIR}/resources.qrc
 RESOURCE_OUT = ${OUTDIR}/resources_rc.py
 
-.PHONY: all
+.PHONY: all clean
 
 all: $(GUI_FILES:%.ui=${OUTDIR}/%.py) ${RESOURCE_OUT}
 
 ${RESOURCE_OUT}: ${RESOURCE_FILE}
 	${PYRCC} ${PYRCC_FLAGS} $< -o $@
 
-${OUTDIR}/%.py: %.ui
+${OUTDIR}/%.py: ${INDIR}/%.ui
 	${PYUIC} ${PYUIC_FLAGS} $< -o $@
