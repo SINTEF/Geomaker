@@ -410,16 +410,23 @@ class Polygon(DeclarativeBase):
         return -np.arctan2(vec[1], vec[0])
 
     def check_area(self, mode, rotate, coords):
-        assert mode == 'interior'
         points = list(self.geometry(coords))
         reference_area = polyfit.polygon_area(points)
-        if rotate == 'free':
+        if rotate == 'free' and mode == 'interior':
             rect, actual_area, theta = polyfit.largest_rectangle(points)
-        elif rotate == 'north':
+        elif rotate == 'north' and mode == 'interior':
             theta = self.geographic_angle(coords)
             rect, actual_area = polyfit.largest_rotated_rectangle(points, theta)
-        else:
+        elif mode == 'interior':
             rect, actual_area = polyfit.largest_aligned_rectangle(points)
+            theta = 0.0
+        elif rotate == 'free':
+            rect, actual_area, theta = polyfit.smallest_rectangle(points)
+        elif rotate == 'north':
+            theta = self.geographic_angle(coords)
+            rect, actual_area = polyfit.smallest_rotated_rectangle(points, theta)
+        else:
+            rect, actual_area = polyfit.smallest_aligned_rectangle(points)
             theta = 0.0
         return abs(actual_area - reference_area) / reference_area, theta
 

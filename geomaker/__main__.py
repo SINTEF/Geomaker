@@ -174,9 +174,9 @@ class ExporterDialog(QDialog):
             return
         pctg, theta = self.poly.check_area(self.boundary_mode, self.rotation_mode, self.coords)
         if self.boundary_mode == 'interior':
-            self.ui.fitwarning.setText(f'{100*pctg:.2f}% area undershoot, {theta*180/np.pi:.2f}°')
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% shortfall, rotated {theta*180/np.pi:.2f}°')
         else:
-            self.ui.fitwarning.setText(f'{100*pctg:.2f}% area overshoot, {theta*180/np.pi:.2f}°')
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% overshoot, rotated {theta*180/np.pi:.2f}°')
 
     def browse(self):
         filters = [

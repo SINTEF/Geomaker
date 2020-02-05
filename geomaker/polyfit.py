@@ -76,6 +76,34 @@ def largest_rectangle(points):
     return pts, area, result.x
 
 
+def smallest_aligned_rectangle(points):
+    l = min(pt[0] for pt in points)
+    r = max(pt[0] for pt in points)
+    d = min(pt[1] for pt in points)
+    u = max(pt[1] for pt in points)
+    pts = [np.array([l, d]), np.array([r, d]), np.array([r, u]), np.array([l, u]), np.array([l, d])]
+    area = (r - l) * (u - d)
+    return pts, area
+
+
+def smallest_rotated_rectangle(points, theta):
+    rotmat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    rotpts = [rotmat.dot(pt) for pt in points]
+    rectpts, area = smallest_aligned_rectangle(rotpts)
+    rectpts = [rotmat.T.dot(pt) for pt in rectpts]
+    return rectpts, area
+
+
+def smallest_rectangle(points):
+    def objfun(theta):
+        _, area = smallest_rotated_rectangle(points, float(theta))
+        return area
+    bounds = (-np.pi/4, np.pi/4)
+    result = opt.minimize_scalar(objfun, bounds=bounds, method='Bounded')
+    pts, area = smallest_rotated_rectangle(points, float(result.x))
+    return pts, area, result.x
+
+
 def polygon_area(corners):
     corners = corners[:-1]
     n = len(corners)
