@@ -60,21 +60,6 @@ class JSInterface(QObject):
         getattr(self, name).emit(*args)
 
 
-class AsyncThread(QThread):
-
-    finished = pyqtSignal(object)
-
-    def __init__(self, job, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.job = job
-
-    def run(self):
-        QApplication.instance().processEvents()
-        callback = self.job()
-        QApplication.instance().processEvents()
-        self.finished.emit(callback)
-
-
 class ExporterDialog(QDialog):
     """A dialog window for exporting data."""
 
