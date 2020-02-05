@@ -99,20 +99,18 @@ class ExporterDialog(QDialog):
         self.ui.filename.currentTextChanged.connect(self.filename_changed)
         self.ui.browsebtn.clicked.connect(self.browse)
 
-        cmaps = sorted(image.list_colormaps())
-
         self.ui.filename.addItems(data.get('export-filenames', []))
         self.ui.formats.addItems([name for _, name in self.FORMATS])
         self.ui.coordinates.addItems([name for _, name in self.COORDS])
-        self.ui.colormaps.addItems(cmaps)
+        self.ui.colormaps.addItems(sorted(image.list_colormaps()))
 
         self.ui.resolution.setValue(data.get('export-resolution', 1.0))
-        self.ui.colormaps.setCurrentIndex(cmaps.index(data.get('export-colormap', 'terrain')))
         self.ui.zero_sea_level.setChecked(data.get('export-zero-sea', True))
 
         self.boundary_mode = data.get('export-boundary-mode', 'interior')
         self.rotation_mode = data.get('export-rotation-mode', 'north')
         self.coords = data.get('export-coords', 'utm33n')
+        self.colormap = data.get('export-colormap', 'terrain')
 
         self.ui.interior_bnd.toggled.connect(self.boundary_mode_changed)
         self.ui.exterior_bnd.toggled.connect(self.boundary_mode_changed)
@@ -165,6 +163,14 @@ class ExporterDialog(QDialog):
     @coords.setter
     def coords(self, value):
         self.ui.coordinates.setCurrentIndex(next(i for i, (v, _) in enumerate(self.COORDS) if v == value))
+
+    @property
+    def colormap(self):
+        return self.ui.colormaps.currentText()
+
+    @colormap.setter
+    def colormap(self, value):
+        self.ui.colormaps.setCurrentText(value)
 
     def boundary_mode_changed(self, update):
         if not update:
@@ -223,6 +229,7 @@ class ExporterDialog(QDialog):
             data['export-filter'] = self.selected_filter
 
         data.update({
+            'export-colormap': self.colormap,
             'export-resolution': self.ui.resolution.value(),
             'export-boundary-mode': self.boundary_mode,
             'export-rotation-mode': self.rotation_mode,
@@ -240,8 +247,7 @@ class ExporterDialog(QDialog):
         )
         data = self.poly.interpolate(self.project, x, y)
         image.array_to_image(
-            data,
-            self.ui.colormaps.currentText(),
+            data, self.colormap,
             self.ui.zero_sea_level.isChecked(),
             self.ui.filename.currentText()
         )
