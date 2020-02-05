@@ -4,22 +4,21 @@ import hashlib
 from itertools import tee, islice
 from io import BytesIO
 import json
+from math import ceil
 from operator import methodcaller
 from pathlib import Path
 from zipfile import ZipFile
 
 from area import area as geojson_area
 from bidict import bidict
-from matplotlib import cm as colormap
 import numpy as np
 import tifffile as tif
-from PIL import Image
 import requests
 import toml
 from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import polyfit
+from . import polyfit, image
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -409,26 +408,55 @@ class Polygon(DeclarativeBase):
         vec = up - convert_latlon(center, coords)
         return -np.arctan2(vec[1], vec[0])
 
-    def check_area(self, mode, rotate, coords):
+    def _rectangularize(self, mode, rotate, coords):
         points = list(self.geometry(coords))
-        reference_area = polyfit.polygon_area(points)
         if rotate == 'free' and mode == 'interior':
-            rect, actual_area, theta = polyfit.largest_rectangle(points)
+            rect, area, theta = polyfit.largest_rectangle(points)
         elif rotate == 'north' and mode == 'interior':
             theta = self.geographic_angle(coords)
-            rect, actual_area = polyfit.largest_rotated_rectangle(points, theta)
+            rect, area = polyfit.largest_rotated_rectangle(points, theta)
         elif mode == 'interior':
-            rect, actual_area = polyfit.largest_aligned_rectangle(points)
+            rect, area = polyfit.largest_aligned_rectangle(points)
             theta = 0.0
         elif rotate == 'free':
-            rect, actual_area, theta = polyfit.smallest_rectangle(points)
+            rect, area, theta = polyfit.smallest_rectangle(points)
         elif rotate == 'north':
             theta = self.geographic_angle(coords)
-            rect, actual_area = polyfit.smallest_rotated_rectangle(points, theta)
+            rect, area = polyfit.smallest_rotated_rectangle(points, theta)
         else:
-            rect, actual_area = polyfit.smallest_aligned_rectangle(points)
+            rect, area = polyfit.smallest_aligned_rectangle(points)
             theta = 0.0
+        return rect, area, theta
+
+    def check_area(self, mode, rotate, coords):
+        reference_area = polyfit.polygon_area(list(self.geometry(coords)))
+        _, actual_area, theta = self._rectangularize(mode, rotate, coords)
         return abs(actual_area - reference_area) / reference_area, theta
+
+    def generate_meshgrid(self, mode, rotate, coords, resolution=None, maxpts=None):
+        rect, _, _ = self._rectangularize(mode, rotate, coords)
+        a, b, c, d, *_ = rect
+        width = np.linalg.norm(b - a)
+        height = np.linalg.norm(c - b)
+        if resolution is None:
+            resolution = max(width, height) / maxpts
+        nx = int(ceil(height / resolution))
+        ny = int(ceil(width / resolution))
+        xt, yt = np.meshgrid(np.linspace(0, 1, nx), np.linspace(0, 1, ny), indexing='ij')
+        x = (1-xt) * (1-yt) * d[1] + xt * (1-yt) * a[1] + xt * yt * b[1] + (1-xt) * yt * c[1]
+        y = (1-xt) * (1-yt) * d[0] + xt * (1-yt) * a[0] + xt * yt * b[0] + (1-xt) * yt * c[0]
+        return x, y
+
+    def interpolate(self, project, x, y):
+        assert x.shape == y.shape
+        data = np.zeros(x.shape)
+        if self.dedicated(project):
+            tiffs = [self.dedicated(project)]
+        else:
+            tiffs = list(self.tiles(project))
+        for tiff in tiffs:
+            tiff.interpolate(data, x, y)
+        return data
 
     def maybe_delete_thumbnail(self, project):
         if self.dedicated(project) or self.ntiles(project) > 0:
@@ -445,37 +473,11 @@ class Polygon(DeclarativeBase):
         if self.thumbnail(project) is not None and not dedicated:
             return
         db.delete_if(self.thumbnail(project))
-        if self.dedicated(project):
-            tiffs = [self.dedicated(project)]
-        else:
-            tiffs = list(self.tiles(project))
 
-        # Crop image to actual region
-        coords = list(self.geometry('utm33n'))
-        east = min(x for x,_ in coords)
-        west = max(x for x,_ in coords)
-        south = min(y for _,y in coords)
-        north = max(y for _,y in coords)
-
-        # Compute a suitable resolution
-        res = max(north - south, east - west) / 640
-
-        # Meshgrid of x,y points in UTM33N coordinates
-        nx = int((north - south) // res)
-        ny = int((west - east) // res)
-        x, y = np.meshgrid(np.linspace(north, south, nx), np.linspace(east, west, ny), indexing='ij')
-
-        # Create a data array and interpolate all GeoTIFF objects onto it
-        image = np.zeros((nx, ny))
-        for tiff in tiffs:
-            tiff.interpolate(image, x, y)
-
-        # Apply the terrain color map and save to disk
-        image /= np.max(image)
-        image = colormap.terrain(image, bytes=True)
-        filename = THUMBNAIL_ROOT / (hashlib.sha256(image.data).hexdigest() + '.png')
-        image = Image.fromarray(image)
-        image.save(filename)
+        x, y = self.generate_meshgrid('exterior', 'none', 'utm33n', maxpts=640)
+        data = self.interpolate(project, x, y)
+        filename = THUMBNAIL_ROOT / (hashlib.sha256(data.data).hexdigest() + '.png')
+        image.array_to_image(data, 'terrain', True, filename)
 
         # Create a new Thumbnail object in the database
         thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
