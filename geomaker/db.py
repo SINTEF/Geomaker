@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
+from itertools import tee, islice
 from io import BytesIO
 import json
 from operator import methodcaller
@@ -18,6 +19,7 @@ import toml
 from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
+from . import polyfit
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -95,6 +97,17 @@ def download_geotiffs(url, project, dedicated):
                 f.write(data)
             filenames.append(filename)
     return filenames
+
+
+def convert_latlon(point, coords):
+    if coords == 'latlon':
+        return point
+    elif coords.startswith('utm'):
+        zonenum = int(coords[3:-1])
+        zoneletter = coords[-1].upper()
+        x, y, *_ = from_latlon(point[1], point[0], force_zone_number=33, force_zone_letter='N')
+        return np.array([x, y])
+    raise ValueError(f'Unknown coordinate system: {coords}')
 
 
 class AsyncWorker:
@@ -243,37 +256,41 @@ class Polygon(DeclarativeBase):
     def lfid(self, value):
         db.update_lfid(self, value)
 
-    @property
-    def geometry(self):
-        """List of x, y coordinates (in latitude and longitude) making
-        up this polygon.
+    def geometry(self, coords='latlon'):
+        """List of x, y coordinates (in a given coordinate system)
+        making up this polygon.
         """
         for p in self.points:
-            yield [p.x, p.y]
+            yield p.in_coords(coords)
+
+    def edges(self, coords='latlon'):
+        a, b = tee(self.geometry(coords), 2)
+        for pta, ptb in zip(a, islice(b, 1, None)):
+            yield (pta, ptb)
 
     @property
     def west(self):
         """Westernmost bounding point (longitude)."""
-        return min(x for x,_ in self.geometry)
+        return min(x for x,_ in self.geometry())
 
     @property
     def east(self):
         """Easternmost bounding point (longitude)."""
-        return max(x for x,_ in self.geometry)
+        return max(x for x,_ in self.geometry())
 
     @property
     def south(self):
         """Southernmost bounding point (latitude)."""
-        return min(y for _,y in self.geometry)
+        return min(y for _,y in self.geometry())
 
     @property
     def north(self):
         """Northernmost bounding point (latitude)."""
-        return max(y for _,y in self.geometry)
+        return max(y for _,y in self.geometry())
 
     @property
     def area(self):
-        return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry)]})
+        return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry())]})
 
     @contextmanager
     def _assoc_query(self, cls, **kwargs):
@@ -360,7 +377,7 @@ class Polygon(DeclarativeBase):
             assert self.ntiles(project) == 0
         assert self.job(project, dedicated) is None
 
-        coords = [pt.z33n for pt in self.points]
+        coords = list(self.geometry('utm33n'))
         coords = [(int(x), int(y)) for x, y in coords]
         coords = ';'.join(f'{x},{y}' for x, y in coords)
         params = {
@@ -385,6 +402,27 @@ class Polygon(DeclarativeBase):
         with db.session() as s:
             s.add(job)
 
+    def geographic_angle(self, coords):
+        points = list(self.geometry())
+        center = sum(points) / len(points)
+        up = convert_latlon(center + np.array([0.1, 0.0]), coords)
+        vec = up - convert_latlon(center, coords)
+        return -np.arctan2(vec[1], vec[0])
+
+    def check_area(self, mode, rotate, coords):
+        assert mode == 'interior'
+        points = list(self.geometry(coords))
+        reference_area = polyfit.polygon_area(points)
+        if rotate == 'free':
+            rect, actual_area, theta = polyfit.largest_rectangle(points)
+        elif rotate == 'north':
+            theta = self.geographic_angle(coords)
+            rect, actual_area = polyfit.largest_rotated_rectangle(points, theta)
+        else:
+            rect, actual_area = polyfit.largest_aligned_rectangle(points)
+            theta = 0.0
+        return abs(actual_area - reference_area) / reference_area, theta
+
     def maybe_delete_thumbnail(self, project):
         if self.dedicated(project) or self.ntiles(project) > 0:
             return
@@ -406,7 +444,7 @@ class Polygon(DeclarativeBase):
             tiffs = list(self.tiles(project))
 
         # Crop image to actual region
-        coords = [pt.z33n for pt in self.points]
+        coords = list(self.geometry('utm33n'))
         east = min(x for x,_ in coords)
         west = max(x for x,_ in coords)
         south = min(y for _,y in coords)
@@ -415,7 +453,7 @@ class Polygon(DeclarativeBase):
         # Compute a suitable resolution
         res = max(north - south, east - west) / 640
 
-        # Meshgrid of x,y points in Z33N coordinates
+        # Meshgrid of x,y points in UTM33N coordinates
         nx = int((north - south) // res)
         ny = int((west - east) // res)
         x, y = np.meshgrid(np.linspace(north, south, nx), np.linspace(east, west, ny), indexing='ij')
@@ -467,11 +505,8 @@ class Point(DeclarativeBase):
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
     polygon = orm.relationship('Polygon', back_populates='points', lazy='immediate')
 
-    @property
-    def z33n(self):
-        """Convert to Z33N coordinates."""
-        x, y, *_ = from_latlon(self.y, self.x, force_zone_number=33, force_zone_letter='N')
-        return x, y
+    def in_coords(self, coords):
+        return convert_latlon(np.array([self.x, self.y]), coords)
 
 
 class GeoTIFF(DeclarativeBase):

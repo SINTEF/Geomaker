@@ -7,6 +7,7 @@ import sys
 import time
 
 from matplotlib import cm as colormap
+import numpy as np
 
 from PyQt5.QtCore import (
     Qt, QObject, QEvent, QItemSelectionModel, QModelIndex, QThread,
@@ -59,15 +60,30 @@ class JSInterface(QObject):
         getattr(self, name).emit(*args)
 
 
+class AsyncThread(QThread):
+
+    finished = pyqtSignal(object)
+
+    def __init__(self, job, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.job = job
+
+    def run(self):
+        QApplication.instance().processEvents()
+        callback = self.job()
+        QApplication.instance().processEvents()
+        self.finished.emit(callback)
+
+
 class ExporterDialog(QDialog):
     """A dialog window for exporting data."""
 
-    formats = [
+    FORMATS = [
         ({'png'}, 'Portable Network Graphics (PNG)'),
         ({'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
     ]
 
-    coords = [
+    COORDS = [
         ('utm33n', 'UTM Zone 33 North'),
         ('latlon', 'Latitude and Longitude'),
     ]
@@ -77,7 +93,6 @@ class ExporterDialog(QDialog):
         self.poly = poly
         self.project = project
         self.selected_filter = None
-
         self.ui = Ui_Exporter()
         self.ui.setupUi(self)
 
@@ -87,17 +102,81 @@ class ExporterDialog(QDialog):
         cmaps = sorted(colormap.cmap_d.keys())
 
         self.ui.filename.addItems(data.get('export-filenames', []))
-        self.ui.formats.addItems([name for _, name in self.formats])
-        self.ui.coordinates.addItems([name for _, name in self.coords])
+        self.ui.formats.addItems([name for _, name in self.FORMATS])
+        self.ui.coordinates.addItems([name for _, name in self.COORDS])
         self.ui.colormaps.addItems(cmaps)
 
         self.ui.resolution.setValue(data.get('export-resolution', 1.0))
         self.ui.colormaps.setCurrentIndex(cmaps.index(data.get('export-colormap', 'terrain')))
-        self.ui.interior_bnd.setChecked(data.get('export-interior', True))
-        self.ui.exterior_bnd.setChecked(data.get('export-exterior', False))
-        self.ui.actual_bnd.setChecked(data.get('export-actual', False))
-        self.ui.rotate.setChecked(data.get('export-rotation', True))
         self.ui.zero_sea_level.setChecked(data.get('export-zero-sea', False))
+
+        self.boundary_mode = data.get('export-boundary-mode', 'interior')
+        self.rotation_mode = data.get('export-rotation-mode', 'north')
+        self.coords = data.get('export-coords', 'utm33n')
+
+        self.ui.interior_bnd.toggled.connect(self.boundary_mode_changed)
+        self.ui.exterior_bnd.toggled.connect(self.boundary_mode_changed)
+        self.ui.actual_bnd.toggled.connect(self.boundary_mode_changed)
+        self.ui.no_rot.toggled.connect(self.boundary_mode_changed)
+        self.ui.north_rot.toggled.connect(self.boundary_mode_changed)
+        self.ui.free_rot.toggled.connect(self.boundary_mode_changed)
+        self.ui.coordinates.currentIndexChanged.connect(partial(self.boundary_mode_changed, True))
+
+        self.boundary_mode_changed(True)
+
+    @property
+    def boundary_mode(self):
+        if self.ui.interior_bnd.isChecked():
+            return 'interior'
+        elif self.ui.exterior_bnd.isChecked():
+            return 'exterior'
+        return 'actual'
+
+    @boundary_mode.setter
+    def boundary_mode(self, value):
+        if value == 'interior':
+            self.ui.interior_bnd.setChecked(True)
+        elif value == 'exterior':
+            self.ui.exterior_bnd.setChecked(True)
+        else:
+            self.ui.actual_bnd.setChecked(True)
+
+    @property
+    def rotation_mode(self):
+        if self.ui.no_rot.isChecked():
+            return 'none'
+        elif self.ui.north_rot.isChecked():
+            return 'north'
+        return 'free'
+
+    @rotation_mode.setter
+    def rotation_mode(self, value):
+        if value == 'none':
+            self.ui.no_rot.setChecked(True)
+        elif value == 'north':
+            self.ui.north_rot.setChecked(True)
+        else:
+            self.ui.free_rot.setChecked(True)
+
+    @property
+    def coords(self):
+        return self.COORDS[self.ui.coordinates.currentIndex()][0]
+
+    @coords.setter
+    def coords(self, value):
+        self.ui.coordinates.setCurrentIndex(next(i for i, (v, _) in enumerate(self.COORDS) if v == value))
+
+    def boundary_mode_changed(self, update):
+        if not update:
+            return
+        if self.boundary_mode == 'actual':
+            self.ui.fitwarning.setText('')
+            return
+        pctg, theta = self.poly.check_area(self.boundary_mode, self.rotation_mode, self.coords)
+        if self.boundary_mode == 'interior':
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% area undershoot, {theta*180/np.pi:.2f}°')
+        else:
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% area overshoot, {theta*180/np.pi:.2f}°')
 
     def browse(self):
         filters = [
@@ -117,7 +196,7 @@ class ExporterDialog(QDialog):
         if suffix is None:
             return
         try:
-            format_index = next(i for i, (fmts, *_) in enumerate(self.formats) if suffix in fmts)
+            format_index = next(i for i, (fmts, *_) in enumerate(self.FORMATS) if suffix in fmts)
             self.ui.formats.setCurrentIndex(format_index)
         except StopIteration:
             pass
@@ -145,10 +224,9 @@ class ExporterDialog(QDialog):
 
         data.update({
             'export-resolution': self.ui.resolution.value(),
-            'export-interior': self.ui.interior_bnd.isChecked(),
-            'export-exterior': self.ui.exterior_bnd.isChecked(),
-            'export-actual': self.ui.actual_bnd.isChecked(),
-            'export-rotation': self.ui.rotate.isChecked(),
+            'export-boundary-mode': self.boundary_mode,
+            'export-rotation-mode': self.rotation_mode,
+            'export-coords': self.coords,
             'export-zero-sea': self.ui.zero_sea_level.isChecked(),
         })
 
@@ -419,7 +497,7 @@ class GUI(Ui_MainWindow):
     # This will fail if done too soon
     def webview_finished_load(self):
         for poly in db:
-            points = str(list(poly.geometry))
+            points = str(list(map(list, poly.geometry())))
 
             # The return value of the add_object javascript function is the internal
             # leaflet ID of the new object. This must be assigned to the poly.lfid

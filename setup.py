@@ -26,6 +26,7 @@ setup(
         'PyQtWebEngine',
         'numpy',
         'requests',
+        'scipy',
         'SQLAlchemy',
         'tifffile',
         'toml',
