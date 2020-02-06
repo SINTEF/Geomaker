@@ -314,9 +314,7 @@ class ThumbnailWidget(QWidget):
         thumb = poly.thumbnail(self.project)
         if thumb is not None:
             pixmap = QPixmap(thumb.filename)
-            self.ui.thumbnail.setPixmap(pixmap.scaledToWidth(
-                self.ui.thumbnail.width(), Qt.SmoothTransformation
-            ))
+            self.ui.thumbnail.setPixmap(pixmap)
             return
         self.ui.thumbnail.setPixmap(QPixmap())
         if poly.njobs(project=self.project) > 0:
