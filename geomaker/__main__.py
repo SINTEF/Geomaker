@@ -325,9 +325,9 @@ class ThumbnailWidget(QWidget):
             return
         self.ui.thumbnail.setPixmap(QPixmap())
         if poly.njobs(project=self.project) > 0:
-            self.ui.thumbnail.setText(f'A job for {self._project} is currently running')
+            self.ui.thumbnail.setText(f'A job for {self.project} is currently running')
         else:
-            self.ui.thumbnail.setText('No jobs running')
+            self.ui.thumbnail.setText(f'No jobs running for {self.project}')
 
 
 class KeyFilter(QObject):
