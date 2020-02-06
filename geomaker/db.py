@@ -524,7 +524,7 @@ class Polygon(DeclarativeBase):
         x, y = self.generate_meshgrid('exterior', 'none', 'utm33n', maxpts=640)
         data = self.interpolate(project, x, y)
         filename = THUMBNAIL_ROOT / (hashlib.sha256(data.data).hexdigest() + '.png')
-        image.array_to_image(data, 'terrain', True, filename)
+        image.array_to_image(data, 'png', 'terrain', filename)
 
         # Create a new Thumbnail object in the database
         thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
