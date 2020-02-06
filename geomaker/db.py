@@ -105,6 +105,8 @@ def convert_latlon(point, coords):
         zonenum = int(coords[3:-1])
         zoneletter = coords[-1].upper()
         x, y, *_ = from_latlon(point[1], point[0], force_zone_number=33, force_zone_letter='N')
+        if isinstance(point[0], np.ndarray):
+            return x, y
         return np.array([x, y])
     raise ValueError(f'Unknown coordinate system: {coords}')
 
@@ -266,6 +268,12 @@ class Polygon(DeclarativeBase):
         a, b = tee(self.geometry(coords), 2)
         for pta, ptb in zip(a, islice(b, 1, None)):
             yield (pta, ptb)
+
+    @property
+    def npts(self):
+        """Order of polygon (number of vertices)."""
+        with db.session() as s:
+            return s.query(Point).filter(Point.polygon == self).count() - 1
 
     @property
     def west(self):
@@ -434,8 +442,15 @@ class Polygon(DeclarativeBase):
         return abs(actual_area - reference_area) / reference_area, theta
 
     def generate_meshgrid(self, mode, rotate, coords, resolution=None, maxpts=None):
-        rect, _, _ = self._rectangularize(mode, rotate, coords)
-        a, b, c, d, *_ = rect
+        # Establish the corner points in the target coordinate system,
+        # so that we can compute the resolution in each direction
+        if mode == 'actual':
+            assert self.npts == 4
+            a, b, c, d, _ = self.geometry(coords)
+        else:
+            (a, b, c, d, _), _, _ = self._rectangularize(mode, rotate, coords)
+
+        # Compute parametric arrays in x and y with the correct lengths
         width = np.linalg.norm(b - a)
         height = np.linalg.norm(c - b)
         if resolution is None:
@@ -443,8 +458,22 @@ class Polygon(DeclarativeBase):
         nx = int(ceil(height / resolution))
         ny = int(ceil(width / resolution))
         xt, yt = np.meshgrid(np.linspace(0, 1, nx), np.linspace(0, 1, ny), indexing='ij')
+
+        # In 'actual' coordinates, the output is x from west to east, y from south to north.
+        # Therefore we permute the corner points here.
+        # TODO: This also assumes that the vertices are ordered in a specific way!
+        if mode == 'actual':
+            d, c, b, a, _ = self.geometry()
+
+        # Assemble x and y arrays in target geometry with image-style coordinates
+        # (x goes from north to south, y from west to east)
         x = (1-xt) * (1-yt) * d[1] + xt * (1-yt) * a[1] + xt * yt * b[1] + (1-xt) * yt * c[1]
         y = (1-xt) * (1-yt) * d[0] + xt * (1-yt) * a[0] + xt * yt * b[0] + (1-xt) * yt * c[0]
+
+        # In 'actual' mode, convert to target coordinates and swap the axes
+        if mode == 'actual':
+            x, y = convert_latlon((y, x), coords)
+
         return x, y
 
     def interpolate(self, project, x, y):
