@@ -665,14 +665,14 @@ class GUI(Ui_MainWindow):
         When finished, download data files for the jobs that are completed.
         """
         self.run_thread(
-            [job.refresh(async=True) for job in db.jobs()],
+            [job.refresh(asynchronous=True) for job in db.jobs()],
             'Refreshing jobs', cont=self.download_jobs,
         )
 
     def download_jobs(self):
         """Download data files for completed jobs asynchronously."""
         self.run_thread(
-            [job.download(async=True) for job in db.jobs(stage='complete')],
+            [job.download(asynchronous=True) for job in db.jobs(stage='complete')],
             'Downloading jobs',
         )
 

@@ -137,22 +137,22 @@ class AsyncWorker:
         return partial(self.callback, retval)
 
 
-def async(func):
-    """Wrap a function with an optional 'async' keyword argument.
+def asynchronous(func):
+    """Wrap a function with an optional 'asynchronous' keyword argument.
     The inner function should return a tuple of two callables: a work
     function (taking no arguments) and a callback function (taking a
     single argument, the return value of the work function).
 
-    If called with 'async' true, the return value is an AsyncWorker
-    object which can be used as described. If 'async' is false, the
+    If called with 'asynchronous' true, the return value is an AsyncWorker
+    object which can be used as described. If 'asynchronous' is false, the
     worker and callback functions are called synchronously and the
     return value of the callback is returned.
     """
 
     @wraps(func)
-    def wrapper(*args, async=False, **kwargs):
+    def wrapper(*args, asynchronous=False, **kwargs):
         work, callback = func(*args, **kwargs)
-        if async:
+        if asynchronous:
             return AsyncWorker(work, callback)
         else:
             return callback(work())
@@ -643,7 +643,7 @@ class Job(DeclarativeBase):
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
-    @async
+    @asynchronous
     def refresh(self):
         """Async-capable method for refreshing the status of the job."""
         worker = partial(make_request, 'exportStatus', {'JobID': self.jobid})
@@ -666,7 +666,7 @@ class Job(DeclarativeBase):
         db.commit()
         return (self.polygon, self.project)
 
-    @async
+    @asynchronous
     def download(self):
         """Async-capable method for downloading job data files.
         This automatically updates the polygon thumbnail and finally
