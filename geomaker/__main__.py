@@ -9,6 +9,7 @@ import time
 import numpy as np
 from splipy import Surface, BSplineBasis
 from splipy.io import G2
+from stl.mesh import Mesh as STLMesh
 
 from PyQt5.QtCore import (
     Qt, QObject, QEvent, QItemSelectionModel, QModelIndex, QThread,
@@ -70,7 +71,8 @@ class ExporterDialog(QDialog):
     FORMATS = [
         ('png', {'png'}, 'Portable Network Graphics (PNG)'),
         ('jpeg', {'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
-        ('g2', {'g2'}, 'GoTools B-Splines')
+        ('g2', {'g2'}, 'GoTools B-Splines (G2)'),
+        ('stl', {'stl'}, 'Stereolithography (STL)'),
     ]
 
     COORDS = [
@@ -198,6 +200,7 @@ class ExporterDialog(QDialog):
         filters = [
             'Images (*.png *.jpg *.jpeg)',
             'GoTools (*.g2)',
+            'Stereolithography (*.stl)'
         ]
         filename, selected_filter = QFileDialog.getSaveFileName(
             self, 'Save file', self.ui.filename.currentText(),
@@ -261,10 +264,14 @@ class ExporterDialog(QDialog):
             boundary_mode = 'actual'
             rotation_mode = 'none'
 
-        x, y = self.poly.generate_meshgrid(
-            boundary_mode, rotation_mode,
-            self.coords, self.ui.resolution.value()
-        )
+        if self.format == 'stl':
+            x, y, tri = self.poly.generate_triangulation(self.coords, self.ui.resolution.value())
+        else:
+            x, y = self.poly.generate_meshgrid(
+                boundary_mode, rotation_mode,
+                self.coords, self.ui.resolution.value()
+            )
+
         if self.format in self.IMAGE_FORMATS:
             data = self.poly.interpolate(self.project, x, y)
         else:
@@ -281,6 +288,12 @@ class ExporterDialog(QDialog):
             srf = Surface(*bases, cpts, raw=True)
             with G2(self.ui.filename.currentText()) as g2:
                 g2.write(srf)
+        elif self.format == 'stl':
+            mesh = STLMesh(np.zeros(tri.shape[0], STLMesh.dtype))
+            mesh.vectors[:,:,0] = x[tri]
+            mesh.vectors[:,:,1] = y[tri]
+            mesh.vectors[:,:,2] = data[tri]
+            mesh.save(self.ui.filename.currentText())
 
         return super().done(QDialog.Accepted)
 

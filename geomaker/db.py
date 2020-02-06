@@ -11,6 +11,7 @@ from zipfile import ZipFile
 
 from area import area as geojson_area
 from bidict import bidict
+import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
 import requests
@@ -476,6 +477,23 @@ class Polygon(DeclarativeBase):
 
         return x, y
 
+    def generate_triangulation(self, coords, resolution):
+        a, b, c, d, _ = self.geometry(coords)
+        mesh_in = tri.MeshInfo()
+        mesh_in.set_points([a, b, c, d])
+        mesh_in.set_facets([(0, 3), (3, 2), (2, 1), (1, 0)])
+
+        def check_refine(vertices, area):
+            return area > resolution**2 / 2
+        mesh_out = tri.build(mesh_in, refinement_func=check_refine)
+
+        x = np.array([pt[0] for pt in mesh_out.points])
+        y = np.array([pt[1] for pt in mesh_out.points])
+        return x, y, np.array(mesh_out.elements)
+
+        # print(len(mesh_out.points))
+        # print(len(mesh_out.elements))
+
     def interpolate(self, project, x, y):
         assert x.shape == y.shape
         data = np.zeros(x.shape)
@@ -613,9 +631,9 @@ class GeoTIFF(DeclarativeBase):
         rx, ry = self.resolution
 
         # Mask of which indices apply to this TIFF
-        I, J = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
-        x = (self.north - x[I, J]) / rx
-        y = (y[I, J] - self.west) / ry
+        M = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
+        x = (self.north - x[M]) / rx
+        y = (y[M] - self.west) / ry
 
         # Compute indices of the element for each point
         left = np.floor(x).astype(int)
@@ -629,8 +647,8 @@ class GeoTIFF(DeclarativeBase):
         refdata = self.as_array()
         refdata[np.where(refdata < 0)] = 0
 
-        data[I, J] = np.maximum(
-            data[I, J],
+        data[M] = np.maximum(
+            data[M],
             refdata[left,   down]   * (1 - ref_left) * (1 - ref_down) +
             refdata[left+1, down]   * ref_left       * (1 - ref_down) +
             refdata[left,   down+1] * (1 - ref_left) * ref_down +
