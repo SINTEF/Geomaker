@@ -276,23 +276,22 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QRadioButton" name="actual_bnd">
+                  <widget class="QLabel" name="fitwarning">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                     <horstretch>0</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color: red;</string>
+                   </property>
                    <property name="text">
-                    <string>True boundaries</string>
+                    <string/>
                    </property>
                   </widget>
                  </item>
                 </layout>
-               </widget>
-              </item>
-              <item row="3" column="0" colspan="2">
-               <widget class="QLabel" name="fitwarning">
-                <property name="styleSheet">
-                 <string notr="true">color: red;</string>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
                </widget>
               </item>
              </layout>

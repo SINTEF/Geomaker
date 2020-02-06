@@ -7,6 +7,8 @@ import sys
 import time
 
 import numpy as np
+from splipy import Surface, BSplineBasis
+from splipy.io import G2
 
 from PyQt5.QtCore import (
     Qt, QObject, QEvent, QItemSelectionModel, QModelIndex, QThread,
@@ -63,9 +65,12 @@ class JSInterface(QObject):
 class ExporterDialog(QDialog):
     """A dialog window for exporting data."""
 
+    IMAGE_FORMATS = {'png', 'jpeg'}
+
     FORMATS = [
-        ({'png'}, 'Portable Network Graphics (PNG)'),
-        ({'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
+        ('png', {'png'}, 'Portable Network Graphics (PNG)'),
+        ('jpeg', {'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
+        ('g2', {'g2'}, 'GoTools B-Splines')
     ]
 
     COORDS = [
@@ -84,11 +89,13 @@ class ExporterDialog(QDialog):
         self.ui.filename.currentTextChanged.connect(self.filename_changed)
         self.ui.browsebtn.clicked.connect(self.browse)
 
-        self.ui.filename.addItems(data.get('export-filenames', []))
-        self.ui.formats.addItems([name for _, name in self.FORMATS])
+        self.ui.formats.addItems([name for _, _, name in self.FORMATS])
         self.ui.coordinates.addItems([name for _, name in self.COORDS])
         self.ui.colormaps.addItems(sorted(image.list_colormaps()))
 
+        # Set the format first, so that the filename can override it
+        self.format = data.get('export-format', 'png')
+        self.ui.filename.addItems(data.get('export-filenames', []))
         self.ui.resolution.setValue(data.get('export-resolution', 1.0))
         self.ui.zero_sea_level.setChecked(data.get('export-zero-sea', True))
 
@@ -99,30 +106,27 @@ class ExporterDialog(QDialog):
 
         self.ui.interior_bnd.toggled.connect(self.boundary_mode_changed)
         self.ui.exterior_bnd.toggled.connect(self.boundary_mode_changed)
-        self.ui.actual_bnd.toggled.connect(self.boundary_mode_changed)
         self.ui.no_rot.toggled.connect(self.boundary_mode_changed)
         self.ui.north_rot.toggled.connect(self.boundary_mode_changed)
         self.ui.free_rot.toggled.connect(self.boundary_mode_changed)
-        self.ui.coordinates.currentIndexChanged.connect(partial(self.boundary_mode_changed, True))
 
-        self.boundary_mode_changed(True)
+        self.ui.coordinates.currentIndexChanged.connect(partial(self.boundary_mode_changed, True))
+        self.ui.formats.currentIndexChanged.connect(self.format_changed)
+
+        self.format_changed()
 
     @property
     def boundary_mode(self):
         if self.ui.interior_bnd.isChecked():
             return 'interior'
-        elif self.ui.exterior_bnd.isChecked():
-            return 'exterior'
-        return 'actual'
+        return 'exterior'
 
     @boundary_mode.setter
     def boundary_mode(self, value):
         if value == 'interior':
             self.ui.interior_bnd.setChecked(True)
-        elif value == 'exterior':
-            self.ui.exterior_bnd.setChecked(True)
         else:
-            self.ui.actual_bnd.setChecked(True)
+            self.ui.exterior_bnd.setChecked(True)
 
     @property
     def rotation_mode(self):
@@ -157,6 +161,27 @@ class ExporterDialog(QDialog):
     def colormap(self, value):
         self.ui.colormaps.setCurrentText(value)
 
+    @property
+    def format(self):
+        return self.FORMATS[self.ui.formats.currentIndex()][0]
+
+    @format.setter
+    def format(self, value):
+        self.ui.formats.setCurrentIndex(next(i for i, (fmt, _, _) in enumerate(self.FORMATS) if value == fmt))
+
+    def format_changed(self):
+        img = self.format in self.IMAGE_FORMATS
+        self.ui.exterior_bnd.setEnabled(img)
+        self.ui.interior_bnd.setEnabled(img)
+        self.ui.no_rot.setEnabled(img)
+        self.ui.north_rot.setEnabled(img)
+        self.ui.free_rot.setEnabled(img)
+
+        if img:
+            self.boundary_mode_changed(True)
+        else:
+            self.ui.fitwarning.setText('')
+
     def boundary_mode_changed(self, update):
         if not update:
             return
@@ -172,6 +197,7 @@ class ExporterDialog(QDialog):
     def browse(self):
         filters = [
             'Images (*.png *.jpg *.jpeg)',
+            'GoTools (*.g2)',
         ]
         filename, selected_filter = QFileDialog.getSaveFileName(
             self, 'Save file', self.ui.filename.currentText(),
@@ -187,7 +213,7 @@ class ExporterDialog(QDialog):
         if suffix is None:
             return
         try:
-            format_index = next(i for i, (fmts, *_) in enumerate(self.FORMATS) if suffix in fmts)
+            format_index = next(i for i, (_, fmts, _) in enumerate(self.FORMATS) if suffix in fmts)
             self.ui.formats.setCurrentIndex(format_index)
         except StopIteration:
             pass
@@ -214,6 +240,7 @@ class ExporterDialog(QDialog):
             data['export-filter'] = self.selected_filter
 
         data.update({
+            'export-format': self.format,
             'export-colormap': self.colormap,
             'export-resolution': self.ui.resolution.value(),
             'export-boundary-mode': self.boundary_mode,
@@ -226,16 +253,35 @@ class ExporterDialog(QDialog):
         if result != QDialog.Accepted:
             return super().done(result)
         self.update_data()
+
+        if self.format in self.IMAGE_FORMATS:
+            boundary_mode = self.boundary_mode
+            rotation_mode = self.rotation_mode
+        else:
+            boundary_mode = 'actual'
+            rotation_mode = 'none'
+
         x, y = self.poly.generate_meshgrid(
-            self.boundary_mode, self.rotation_mode,
+            boundary_mode, rotation_mode,
             self.coords, self.ui.resolution.value()
         )
-        data = self.poly.interpolate(self.project, x, y)
-        image.array_to_image(
-            data, self.colormap,
-            self.ui.zero_sea_level.isChecked(),
-            self.ui.filename.currentText()
-        )
+        if self.format in self.IMAGE_FORMATS:
+            data = self.poly.interpolate(self.project, x, y)
+        else:
+            data = self.poly.interpolate(self.project, y, x)
+        if not self.ui.zero_sea_level.isChecked():
+            data -= np.min(data)
+
+        if self.format in self.IMAGE_FORMATS:
+            image.array_to_image(data, self.format, self.colormap, self.ui.filename.currentText())
+        elif self.format == 'g2':
+            cpts = np.stack([x, y, data], axis=2)
+            knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape]
+            bases = [BSplineBasis(order=2, knots=kts) for kts in knots]
+            srf = Surface(*bases, cpts, raw=True)
+            with G2(self.ui.filename.currentText()) as g2:
+                g2.write(srf)
+
         return super().done(QDialog.Accepted)
 
 

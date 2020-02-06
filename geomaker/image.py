@@ -7,11 +7,12 @@ def list_colormaps():
     return colormap.cmap_d.keys()
 
 
-def array_to_image(data, cmap, true_zero, filename):
-    if not true_zero:
-        data -= np.min(data)
+def array_to_image(data, fmt, cmap, filename):
     maxval = np.max(data)
     if maxval > 0:
         data /= np.max(data)
-    image = Image.fromarray(getattr(colormap, cmap)(data, bytes=True))
-    image.save(str(filename))
+    data = getattr(colormap, cmap)(data, bytes=True)
+    if data.shape[-1] == 4 and fmt == 'jpeg':
+        data = data[..., :3]
+    image = Image.fromarray(data)
+    image.save(str(filename), format=fmt.upper())

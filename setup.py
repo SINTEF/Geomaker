@@ -27,6 +27,7 @@ setup(
         'numpy',
         'requests',
         'scipy',
+        'Splipy',
         'SQLAlchemy',
         'tifffile',
         'toml',
