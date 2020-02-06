@@ -395,7 +395,7 @@ class GUI(Ui_MainWindow):
         self.webview.loadFinished.connect(self.webview_finished_load)
 
         # Polygon list item model and events
-        self.polylist.setModel(DatabaseModel(db))
+        self.polylist.setModel(DatabaseModel(self.js_interface))
         self.polylist.selectionModel().selectionChanged.connect(self.polylist_selection_changed)
         self.polylist.doubleClicked.connect(self.polylist_double_clicked)
 

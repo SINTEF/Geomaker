@@ -22,8 +22,9 @@ class DatabaseModel(QAbstractListModel):
     with QListView.setModel().
     """
 
-    def __init__(self, db):
+    def __init__(self, interface):
         super().__init__()
+        self.interface = interface
         db.notify(self)         # Ensure that we will be notified of changes
 
     def before_insert(self, index):
@@ -39,13 +40,13 @@ class DatabaseModel(QAbstractListModel):
         self.endRemoveRows()
 
     def before_reset(self, lfid):
-        interface.select_poly(-1)
+        self.interface.select_poly(-1)
         self._selected = lfid
         self.beginResetModel()
 
     def after_reset(self):
         self.endResetModel()
-        interface.select_poly(self._selected)
+        self.interface.select_poly(self._selected)
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
