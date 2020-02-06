@@ -306,15 +306,22 @@ class ThumbnailWidget(QWidget):
     def __init__(self, project, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.project = project
+        self._filename = None
 
         self.ui = Ui_Thumbnail()
         self.ui.setupUi(self)
 
+    def load_pixmap(self, filename):
+        if filename == self._filename:
+            return
+        pixmap = QPixmap(filename)
+        self.ui.thumbnail.setPixmap(pixmap)
+        self._filename = filename
+
     def update_poly(self, poly):
         thumb = poly.thumbnail(self.project)
         if thumb is not None:
-            pixmap = QPixmap(thumb.filename)
-            self.ui.thumbnail.setPixmap(pixmap)
+            self.load_pixmap(thumb.filename)
             return
         self.ui.thumbnail.setPixmap(QPixmap())
         if poly.njobs(project=self.project) > 0:
