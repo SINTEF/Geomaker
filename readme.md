@@ -23,6 +23,8 @@ There are a number of ways this might fail:
 - If `pip` is not installed, install it.
 - If `pip` points to a Python 2 installation, your distribution's
   Python 3 `pip` might be called `pip3`.
+- If a compiled component fails to compile, you may need to install
+  pybind11, e.g. `sudo apt install pybind11-dev` on Ubuntu.
 - If PyQt5 or some other dependencies fail to install, you may want to
   install them manually using your system's package manager. See the
   detailed list of dependencies below. After doing this, you can
@@ -40,20 +42,30 @@ automatically tracks the repository contents.
 
 ## Dependencies
 
-The following packages are simple Python-only packages:
+The following packages are either simple Python-only packages or have
+well-established compiled wheels for download:
 
 - area (for calculating areas in spherical coordinate systems)
 - bidict (bidirectional dictionaries)
 - matplotlib (for color maps)
 - numpy (no scientific code can be without)
+- numpy-stl (for saving STL meshes)
 - requests (for making API queries to hoydedata.no)
+- scipy (for optimization routines)
+- splipy (for producing B-Spline output)
 - sqlalchemy (for maintaining persistent data on disk)
 - tifffile (for reading GeoTIFF files)
 - toml (for the config file)
 - utm (for converting to and from UTM coordinates)
 - xdg (for accessing XDG paths)
 
-In addition, the PyQt5 bindings are necessary:
+In addition, the PyQt5 bindings are necessary. Most Linux
+distributions have well-established system packages for these if they
+fail to install from PyPi.
 
 - PyQt5
 - PyQtWebEngine
+
+Finally, the meshpy library for generating triangular meshes contains
+compiled components which require pybind11, which must also be
+installed.
