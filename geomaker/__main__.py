@@ -425,6 +425,7 @@ class ThumbnailWidget(QWidget):
         if thumb is not None:
             self.load_pixmap(thumb.filename)
             return
+        self._filename = None
         self.ui.thumbnail.setPixmap(QPixmap())
         if poly.njobs(project=self.project) > 0:
             self.ui.thumbnail.setText(f'A job for {self.project} is currently running')
