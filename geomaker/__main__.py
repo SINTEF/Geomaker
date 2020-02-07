@@ -119,9 +119,9 @@ class ExporterDialog(QDialog):
         self.ui.browsebtn.clicked.connect(self.browse)
         self.ui.formats.currentIndexChanged.connect(self.format_changed)
         self.ui.coordinates.currentIndexChanged.connect(self.coords_changed)
-        self.ui.okbtn.pressed.connect(self.accept)
-        self.ui.cancelbtn.pressed.connect(self.reject)
-        self.ui.refreshbtn.pressed.connect(self.recompute)
+        self.ui.okbtn.clicked.connect(self.accept)
+        self.ui.cancelbtn.clicked.connect(self.reject)
+        self.ui.refreshbtn.clicked.connect(self.recompute)
 
         # Trigger some basic validation
         self.format_changed()
@@ -349,8 +349,8 @@ class JobDialog(QDialog):
         self.ui.email.setText(ConfigFile()['email'])
         self.ui.projectlist.setModel(ProjectsModel())
 
-        self.ui.okbtn.pressed.connect(self.accept)
-        self.ui.cancelbtn.pressed.connect(self.reject)
+        self.ui.okbtn.clicked.connect(self.accept)
+        self.ui.cancelbtn.clicked.connect(self.reject)
 
         self.setFixedSize(self.size())
 
