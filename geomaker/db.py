@@ -162,15 +162,28 @@ def asynchronous(func):
     return wrapper
 
 
-class TomlFile(dict):
-    """TOML file mapped as a dict."""
+class SingletonMeta(type):
+    """Metaclass for creating singleton classes."""
+
+    __instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            cls.__instances[cls] = super().__call__(*args, **kwargs)
+        return cls.__instances[cls]
+
+
+class TomlFile(dict, metaclass=SingletonMeta):
+    """Singleton TOML file mapped as a dict."""
 
     def __init__(self, filename):
         super().__init__()
+        self.filename = filename
+        self._suspended = False
+
         if filename.exists():
             with open(filename, 'r') as f:
                 self.update(toml.load(f), write=False)
-        self.filename = filename
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
@@ -181,12 +194,21 @@ class TomlFile(dict):
         if write:
             self.write()
 
-    def write(self):
-        with open(self.filename, 'w') as f:
-            toml.dump(self, f)
+    def write(self, force=False):
+        if force or not self._suspended:
+            with open(self.filename, 'w') as f:
+                toml.dump(dict(self), f)
+
+    @contextmanager
+    def suspend_write(self):
+        prev_val = self._suspended
+        self._suspended = True
+        yield self
+        self._suspended = prev_val
+        self.write()
 
 
-class Config(TomlFile):
+class ConfigFile(TomlFile):
     """Geomaker config file mapped to a dict.
     Usually found at ~/.config/geomaker.toml.
     """
@@ -203,7 +225,7 @@ class Config(TomlFile):
             self['email'] = querier.query_str('E-mail address', 'E-mail:')
 
 
-class Data(TomlFile):
+class DataFile(TomlFile):
     """Geomaker data file mapped to a dict.
     Usually found at ~/.local/share/geomaker/geomaker.toml
     """
