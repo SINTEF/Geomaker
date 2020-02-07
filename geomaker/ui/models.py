@@ -13,7 +13,7 @@ class ProjectsModel(QAbstractListModel):
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
-            return QVariant(PROJECTS[index.row()][1])
+            return QVariant(PROJECTS.values()[index.row()].name)
         return QVariant()
 
 
