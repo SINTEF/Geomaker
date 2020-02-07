@@ -15,11 +15,10 @@ import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
 import requests
-import toml
 from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import polyfit, image
+from . import polyfit, image, filesystem, util
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -27,20 +26,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 DeclarativeBase = declarative_base()
 
-
-# Create database if it does not exist
-DATA_ROOT = XDG_DATA_HOME / 'geomaker'
-THUMBNAIL_ROOT = DATA_ROOT / 'thumbnails'
-
-for d in [DATA_ROOT, THUMBNAIL_ROOT]:
-    if not d.exists():
-        d.mkdir()
-
-# Config file
-CONFIG_FILE = XDG_CONFIG_HOME / 'geomaker.toml'
-
-# Data file
-DATA_FILE = DATA_ROOT / 'geomaker.toml'
 
 # Projects
 PROJECTS = [
@@ -52,10 +37,7 @@ PROJECTS = [
     ('DOM1',  'Object model (1 m)'),
 ]
 
-for project, _ in PROJECTS:
-    proj_dir = DATA_ROOT / project
-    if not proj_dir.exists():
-        proj_dir.mkdir()
+filesystem.create_directories(proj for proj, _ in PROJECTS)
 
 
 def make_request(endpoint, params):
@@ -92,7 +74,7 @@ def download_geotiffs(url, project, dedicated):
                 filename = hashlib.sha256(data).hexdigest() + '.tiff'
             else:
                 filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
-            filename = DATA_ROOT / project / filename
+            filename = filesystem.project_file(project, filename)
             with open(filename, 'wb') as f:
                 f.write(data)
             filenames.append(filename)
@@ -160,78 +142,6 @@ def asynchronous(func):
         else:
             return callback(work())
     return wrapper
-
-
-class SingletonMeta(type):
-    """Metaclass for creating singleton classes."""
-
-    __instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls.__instances:
-            cls.__instances[cls] = super().__call__(*args, **kwargs)
-        return cls.__instances[cls]
-
-
-class TomlFile(dict, metaclass=SingletonMeta):
-    """Singleton TOML file mapped as a dict."""
-
-    def __init__(self, filename):
-        super().__init__()
-        self.filename = filename
-        self._suspended = False
-
-        if filename.exists():
-            with open(filename, 'r') as f:
-                self.update(toml.load(f), write=False)
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.write()
-
-    def update(self, other, write=True):
-        super().update(other)
-        if write:
-            self.write()
-
-    def write(self, force=False):
-        if force or not self._suspended:
-            with open(self.filename, 'w') as f:
-                toml.dump(dict(self), f)
-
-    @contextmanager
-    def suspend_write(self):
-        prev_val = self._suspended
-        self._suspended = True
-        yield self
-        self._suspended = prev_val
-        self.write()
-
-
-class ConfigFile(TomlFile):
-    """Geomaker config file mapped to a dict.
-    Usually found at ~/.config/geomaker.toml.
-    """
-
-    def __init__(self):
-        super().__init__(CONFIG_FILE)
-
-    def verify(self, querier):
-        if not 'email' in self:
-            querier.message(
-                'E-mail address',
-                'An e-mail address must be configured to make requests to the Norwegian Mapping Authority',
-            )
-            self['email'] = querier.query_str('E-mail address', 'E-mail:')
-
-
-class DataFile(TomlFile):
-    """Geomaker data file mapped to a dict.
-    Usually found at ~/.local/share/geomaker/geomaker.toml
-    """
-
-    def __init__(self):
-        super().__init__(DATA_FILE)
 
 
 class Polygon(DeclarativeBase):
@@ -513,9 +423,6 @@ class Polygon(DeclarativeBase):
         y = np.array([pt[1] for pt in mesh_out.points])
         return x, y, np.array(mesh_out.elements)
 
-        # print(len(mesh_out.points))
-        # print(len(mesh_out.elements))
-
     def interpolate(self, project, x, y):
         assert x.shape == y.shape
         data = np.zeros(x.shape)
@@ -545,7 +452,8 @@ class Polygon(DeclarativeBase):
 
         x, y = self.generate_meshgrid('exterior', 'none', 'utm33n', maxpts=640)
         data = self.interpolate(project, x, y)
-        filename = THUMBNAIL_ROOT / (hashlib.sha256(data.data).hexdigest() + '.png')
+        filename = hashlib.sha256(data.data).hexdigest() + '.png'
+        filename = filesystem.thumbnail_file(filename)
         image.array_to_image(data, 'png', 'terrain', filename)
 
         # Create a new Thumbnail object in the database
@@ -766,13 +674,13 @@ class Job(DeclarativeBase):
         return retval
 
 
-class Database(metaclass=SingletonMeta):
+class Database(metaclass=util.SingletonMeta):
     """Primary database interface for use by the GUI. Intended to be
     used as a singleton.
     """
 
     def __init__(self):
-        self.engine = sql.create_engine(f'sqlite:///{DATA_ROOT}/db.sqlite3')
+        self.engine = sql.create_engine(f'sqlite:///{filesystem.DATA_ROOT}/db.sqlite3')
         DeclarativeBase.metadata.create_all(self.engine)
 
         # The session object lasts for the lifetime of the program
