@@ -301,6 +301,11 @@ class JobDialog(QDialog):
         self.ui.email.setText(config['email'])
         self.ui.projectlist.setModel(ProjectsModel())
 
+        self.ui.okbtn.pressed.connect(self.accept)
+        self.ui.cancelbtn.pressed.connect(self.reject)
+
+        self.setFixedSize(self.size())
+
     def done(self, result):
         project, _ = PROJECTS[self.ui.projectlist.selectedIndexes()[0].row()]
         dedicated = self.ui.dedicated.checkState() == Qt.Checked
