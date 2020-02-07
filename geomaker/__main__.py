@@ -168,13 +168,16 @@ class ExporterDialog(QDialog):
     def format(self, value):
         self.ui.formats.setCurrentIndex(next(i for i, (fmt, _, _) in enumerate(self.FORMATS) if value == fmt))
 
+    @property
+    def image_mode(self):
+        return self.format in self.IMAGE_FORMATS
+
     def format_changed(self):
-        img = self.format in self.IMAGE_FORMATS
-        self.ui.exterior_bnd.setEnabled(img)
-        self.ui.interior_bnd.setEnabled(img)
-        self.ui.no_rot.setEnabled(img)
-        self.ui.north_rot.setEnabled(img)
-        self.ui.free_rot.setEnabled(img)
+        self.ui.exterior_bnd.setEnabled(self.image_mode)
+        self.ui.interior_bnd.setEnabled(self.image_mode)
+        self.ui.no_rot.setEnabled(self.image_mode)
+        self.ui.north_rot.setEnabled(self.image_mode)
+        self.ui.free_rot.setEnabled(self.image_mode)
 
     def recompute(self):
         if self.boundary_mode == 'actual':
@@ -234,20 +237,24 @@ class ExporterDialog(QDialog):
 
         data.update({
             'export-format': self.format,
-            'export-colormap': self.colormap,
             'export-resolution': self.ui.resolution.value(),
-            'export-boundary-mode': self.boundary_mode,
-            'export-rotation-mode': self.rotation_mode,
             'export-coords': self.coords,
             'export-zero-sea': self.ui.zero_sea_level.isChecked(),
         })
+
+        if self.image_mode:
+            data.update({
+                'export-colormap': self.colormap,
+                'export-boundary-mode': self.boundary_mode,
+                'export-rotation-mode': self.rotation_mode,
+            })
 
     def done(self, result):
         if result != QDialog.Accepted:
             return super().done(result)
         self.update_data()
 
-        if self.format in self.IMAGE_FORMATS:
+        if self.image_mode:
             boundary_mode = self.boundary_mode
             rotation_mode = self.rotation_mode
         else:
@@ -262,14 +269,14 @@ class ExporterDialog(QDialog):
                 self.coords, self.ui.resolution.value()
             )
 
-        if self.format in self.IMAGE_FORMATS:
+        if self.image_mode:
             data = self.poly.interpolate(self.project, x, y)
         else:
             data = self.poly.interpolate(self.project, y, x)
         if not self.ui.zero_sea_level.isChecked():
             data -= np.min(data)
 
-        if self.format in self.IMAGE_FORMATS:
+        if self.image_mode:
             image.array_to_image(data, self.format, self.colormap, self.ui.filename.currentText())
         elif self.format == 'g2':
             cpts = np.stack([x, y, data], axis=2)
