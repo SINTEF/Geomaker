@@ -5,5 +5,7 @@
     <file>icons/download.png</file>
     <file>icons/refresh.png</file>
     <file>icons/export.png</file>
+    <file>icons/cancel.png</file>
+    <file>icons/ok.png</file>
   </qresource>
 </RCC>

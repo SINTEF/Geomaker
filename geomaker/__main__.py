@@ -18,8 +18,8 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import QPixmap, QIcon, QKeyEvent
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWidgets import (
-    QApplication, QDialog, QFileDialog, QInputDialog, QMainWindow,
-    QMessageBox, QProgressBar, QPushButton, QWidget,
+    QApplication, QDialog, QFileDialog, QInputDialog, QLayout,
+    QMainWindow, QMessageBox, QProgressBar, QPushButton, QWidget,
 )
 
 from .ui.utils import key_to_text, angle_to_degrees
@@ -106,16 +106,13 @@ class ExporterDialog(QDialog):
         self.coords = data.get('export-coords', 'utm33n')
         self.colormap = data.get('export-colormap', 'terrain')
 
-        self.ui.interior_bnd.toggled.connect(self.boundary_mode_changed)
-        self.ui.exterior_bnd.toggled.connect(self.boundary_mode_changed)
-        self.ui.no_rot.toggled.connect(self.boundary_mode_changed)
-        self.ui.north_rot.toggled.connect(self.boundary_mode_changed)
-        self.ui.free_rot.toggled.connect(self.boundary_mode_changed)
-
-        self.ui.coordinates.currentIndexChanged.connect(partial(self.boundary_mode_changed, True))
         self.ui.formats.currentIndexChanged.connect(self.format_changed)
+        self.ui.okbtn.pressed.connect(self.accept)
+        self.ui.cancelbtn.pressed.connect(self.reject)
+        self.ui.refreshbtn.pressed.connect(self.recompute)
 
         self.format_changed()
+        self.setFixedSize(self.size())
 
     @property
     def boundary_mode(self):
@@ -179,14 +176,7 @@ class ExporterDialog(QDialog):
         self.ui.north_rot.setEnabled(img)
         self.ui.free_rot.setEnabled(img)
 
-        if img:
-            self.boundary_mode_changed(True)
-        else:
-            self.ui.fitwarning.setText('')
-
-    def boundary_mode_changed(self, update):
-        if not update:
-            return
+    def recompute(self):
         if self.boundary_mode == 'actual':
             self.ui.fitwarning.setText('')
             return
