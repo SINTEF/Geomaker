@@ -178,6 +178,7 @@ class ExporterDialog(QDialog):
         self.ui.no_rot.setEnabled(self.image_mode)
         self.ui.north_rot.setEnabled(self.image_mode)
         self.ui.free_rot.setEnabled(self.image_mode)
+        self.ui.colormaps.setEnabled(self.image_mode)
 
     def recompute(self):
         if self.boundary_mode == 'actual':
