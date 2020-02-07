@@ -421,10 +421,7 @@ class Polygon(DeclarativeBase):
         mesh_in = tri.MeshInfo()
         mesh_in.set_points([a, b, c, d])
         mesh_in.set_facets([(0, 3), (3, 2), (2, 1), (1, 0)])
-
-        def check_refine(vertices, area):
-            return area > resolution**2 / 2
-        mesh_out = tri.build(mesh_in, refinement_func=check_refine)
+        mesh_out = tri.build(mesh_in, max_volume=resolution**2/2)
 
         x = np.array([pt[0] for pt in mesh_out.points])
         y = np.array([pt[1] for pt in mesh_out.points])
