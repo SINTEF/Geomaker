@@ -49,7 +49,7 @@ class Ui_Exporter(object):
         self.colormaps.setObjectName("colormaps")
         self.gridLayout_4.addWidget(self.colormaps, 6, 1, 1, 2)
         self.resolution = QtWidgets.QDoubleSpinBox(self.widget_2)
-        self.resolution.setDecimals(1)
+        self.resolution.setDecimals(5)
         self.resolution.setMaximum(1000.0)
         self.resolution.setSingleStep(0.1)
         self.resolution.setObjectName("resolution")

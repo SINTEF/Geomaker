@@ -83,8 +83,8 @@ class ExporterDialog(QDialog):
     ]
 
     COORDS = [
-        ('utm33n', 'UTM Zone 33 North'),
-        ('latlon', 'Latitude and Longitude'),
+        ('utm33n', 'UTM Zone 33 North', 'm'),
+        ('latlon', 'Latitude and Longitude', '°'),
     ]
 
     def __init__(self, poly, project, *args, **kwargs):
@@ -99,7 +99,7 @@ class ExporterDialog(QDialog):
         self.ui.browsebtn.clicked.connect(self.browse)
 
         self.ui.formats.addItems([name for _, _, name in self.FORMATS])
-        self.ui.coordinates.addItems([name for _, name in self.COORDS])
+        self.ui.coordinates.addItems([name for _, name, _ in self.COORDS])
         self.ui.colormaps.addItems(sorted(image.list_colormaps()))
 
         # Set the format first, so that the filename can override it
@@ -114,11 +114,14 @@ class ExporterDialog(QDialog):
         self.colormap = data.get('export-colormap', 'terrain')
 
         self.ui.formats.currentIndexChanged.connect(self.format_changed)
+        self.ui.coordinates.currentIndexChanged.connect(self.coords_changed)
         self.ui.okbtn.pressed.connect(self.accept)
         self.ui.cancelbtn.pressed.connect(self.reject)
         self.ui.refreshbtn.pressed.connect(self.recompute)
 
         self.format_changed()
+        self.update_resolution_suffix()
+
         self.setFixedSize(self.size())
 
     @property
@@ -157,7 +160,11 @@ class ExporterDialog(QDialog):
 
     @coords.setter
     def coords(self, value):
-        self.ui.coordinates.setCurrentIndex(next(i for i, (v, _) in enumerate(self.COORDS) if v == value))
+        self.ui.coordinates.setCurrentIndex(next(i for i, (v, _, _) in enumerate(self.COORDS) if v == value))
+
+    @property
+    def coords_unit(self):
+        return self.COORDS[self.ui.coordinates.currentIndex()][2]
 
     @property
     def colormap(self):
@@ -195,6 +202,20 @@ class ExporterDialog(QDialog):
         if filename.suffix[1:] not in self.format_suffixes:
             with block_signals(self.ui.filename) as obj:
                 obj.setEditText(str(filename.with_suffix('.' + self.format)))
+
+    def coords_changed(self):
+        # Very basic conversion between degrees and meters:
+        # originally, a meter was defined as one 10000th of the
+        # distance between the equator and the pole, so a degree of
+        # latitude is roughly 10000/90 meters.
+        if self.coords_unit == '°' and self.ui.resolution.suffix() == 'm':
+            self.ui.resolution.setValue(self.ui.resolution.value() / 10000 * 90)
+        elif self.coords_unit == 'm' and self.ui.resolution.suffix() == '°':
+            self.ui.resolution.setValue(self.ui.resolution.value() / 90 * 10000)
+        self.update_resolution_suffix()
+
+    def update_resolution_suffix(self):
+        self.ui.resolution.setSuffix(self.coords_unit)
 
     def recompute(self):
         if self.boundary_mode == 'actual':
