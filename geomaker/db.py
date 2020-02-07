@@ -274,11 +274,11 @@ class Polygon(DeclarativeBase):
     # provide a property-like interface to it from here.
     @property
     def lfid(self):
-        return db.lfid.inverse.get(self.id, None)
+        return Database().lfid.inverse.get(self.id, None)
 
     @lfid.setter
     def lfid(self, value):
-        db.update_lfid(self, value)
+        Database().update_lfid(self, value)
 
     def geometry(self, coords='latlon'):
         """List of x, y coordinates (in a given coordinate system)
@@ -295,7 +295,7 @@ class Polygon(DeclarativeBase):
     @property
     def npts(self):
         """Order of polygon (number of vertices)."""
-        with db.session() as s:
+        with Database().session() as s:
             return s.query(Point).filter(Point.polygon == self).count() - 1
 
     @property
@@ -332,7 +332,7 @@ class Polygon(DeclarativeBase):
         filters = [cls.polygon == self]
         for key, value in kwargs.items():
             filters.append(getattr(cls, key) == value)
-        with db.session() as s:
+        with Database().session() as s:
             yield s.query(cls).filter(*filters)
 
     def _single_assoc(self, cls, **kwargs):
@@ -371,7 +371,7 @@ class Polygon(DeclarativeBase):
 
     def delete_dedicated(self, project):
         """Remove the dedicated GeoTIFF file associated with a project."""
-        db.delete_if(self.dedicated(project))
+        Database().delete_if(self.dedicated(project))
         self.maybe_delete_thumbnail(project)
 
     def delete_tiles(self, project):
@@ -395,7 +395,7 @@ class Polygon(DeclarativeBase):
     def delete_job(self, project, dedicated):
         """Delete the currently running job for the given project."""
         obj = self.job(project, dedicated)
-        db.delete_if(obj)
+        Database().delete_if(obj)
 
     def create_job(self, project, dedicated, email):
         """Create a new job. This will fail if existing data files or
@@ -429,7 +429,7 @@ class Polygon(DeclarativeBase):
             return 'Unknown error'
 
         job = Job(polygon=self, project=project, dedicated=dedicated, jobid=response['JobID'])
-        with db.session() as s:
+        with Database().session() as s:
             s.add(job)
 
     def geographic_angle(self, coords):
@@ -530,7 +530,7 @@ class Polygon(DeclarativeBase):
     def maybe_delete_thumbnail(self, project):
         if self.dedicated(project) or self.ntiles(project) > 0:
             return
-        db.delete_if(self.thumbnail(project))
+        Database().delete_if(self.thumbnail(project))
 
     def update_thumbnail(self, project, dedicated):
         """Update the thumbnail for the given project.
@@ -541,7 +541,7 @@ class Polygon(DeclarativeBase):
         """
         if self.thumbnail(project) is not None and not dedicated:
             return
-        db.delete_if(self.thumbnail(project))
+        Database().delete_if(self.thumbnail(project))
 
         x, y = self.generate_meshgrid('exterior', 'none', 'utm33n', maxpts=640)
         data = self.interpolate(project, x, y)
@@ -550,7 +550,7 @@ class Polygon(DeclarativeBase):
 
         # Create a new Thumbnail object in the database
         thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
-        with db.session() as s:
+        with Database().session() as s:
             s.add(thumb)
 
 
@@ -732,7 +732,7 @@ class Job(DeclarativeBase):
             self.stage = response['Status']
             if self.stage == 'complete':
                 self.url = response['Url']
-        db.commit()
+        Database().commit()
         return (self.polygon, self.project)
 
     @asynchronous
@@ -754,19 +754,19 @@ class Job(DeclarativeBase):
             geotiff = GeoTIFF(filename=str(filename))
             geotiff.populate()
             polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
-            with db.session() as s:
+            with Database().session() as s:
                 s.add(geotiff)
                 s.add(polytiff)
 
         # TODO: Generate thumbnails asynchronously
         self.polygon.update_thumbnail(self.project, self.dedicated)
         retval = (self.polygon, self.project)
-        with db.session() as s:
+        with Database().session() as s:
             s.delete(self)
         return retval
 
 
-class Database:
+class Database(metaclass=SingletonMeta):
     """Primary database interface for use by the GUI. Intended to be
     used as a singleton.
     """
@@ -923,6 +923,3 @@ class Database:
         with self.session() as s:
             s.delete(poly)
         self.message('after_delete')
-
-
-db = Database()

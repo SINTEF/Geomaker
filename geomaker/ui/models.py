@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, QAbstractListModel, QModelIndex, QVariant
 
-from ..db import PROJECTS, db
+from ..db import PROJECTS, Database
 
 
 class ProjectsModel(QAbstractListModel):
@@ -25,7 +25,7 @@ class DatabaseModel(QAbstractListModel):
     def __init__(self, interface):
         super().__init__()
         self.interface = interface
-        db.notify(self)         # Ensure that we will be notified of changes
+        Database().notify(self)         # Ensure that we will be notified of changes
 
     def before_insert(self, index):
         self.beginInsertRows(QModelIndex(), index, index)
@@ -50,15 +50,15 @@ class DatabaseModel(QAbstractListModel):
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
-            return QVariant(db[index.row()].name)
+            return QVariant(Database()[index.row()].name)
         return QVariant()
 
     def setData(self, index, data, role):
-        db.update_name(index.row(), data)
+        Database().update_name(index.row(), data)
         return True
 
     def rowCount(self, parent):
-        return len(db)
+        return len(Database())
 
     def flags(self, index):
         return super().flags(index) | Qt.ItemIsEditable
