@@ -34,6 +34,13 @@ from .ui.jobdialog import Ui_JobDialog
 from .ui.exporter import Ui_Exporter
 
 
+@contextmanager
+def block_signals(obj):
+    prev = obj.blockSignals(True)
+    yield obj
+    obj.blockSignals(prev)
+
+
 class JSInterface(QObject):
     """Class that marshals JS events to Python.
     This is a Qt object that can emit signals upon calls from JS.
@@ -169,6 +176,10 @@ class ExporterDialog(QDialog):
         self.ui.formats.setCurrentIndex(next(i for i, (fmt, _, _) in enumerate(self.FORMATS) if value == fmt))
 
     @property
+    def format_suffixes(self):
+        return self.FORMATS[self.ui.formats.currentIndex()][1]
+
+    @property
     def image_mode(self):
         return self.format in self.IMAGE_FORMATS
 
@@ -179,6 +190,11 @@ class ExporterDialog(QDialog):
         self.ui.north_rot.setEnabled(self.image_mode)
         self.ui.free_rot.setEnabled(self.image_mode)
         self.ui.colormaps.setEnabled(self.image_mode)
+
+        filename = Path(self.ui.filename.currentText())
+        if filename.suffix[1:] not in self.format_suffixes:
+            with block_signals(self.ui.filename) as obj:
+                obj.setEditText(str(filename.with_suffix('.' + self.format)))
 
     def recompute(self):
         if self.boundary_mode == 'actual':
