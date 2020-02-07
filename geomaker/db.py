@@ -1,3 +1,4 @@
+from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
@@ -11,6 +12,7 @@ from zipfile import ZipFile
 
 from area import area as geojson_area
 from bidict import bidict
+from indexed import IndexedOrderedDict
 import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
@@ -27,17 +29,20 @@ from sqlalchemy.ext.declarative import declarative_base
 DeclarativeBase = declarative_base()
 
 
-# Projects
-PROJECTS = [
-    ('DTM50', 'Terrain model (50 m)'),
-    ('DTM10', 'Terrain model (10 m)'),
-    ('DTM1',  'Terrain model (1 m)'),
-    ('DOM50', 'Object model (50 m)'),
-    ('DOM10', 'Object model (10 m)'),
-    ('DOM1',  'Object model (1 m)'),
-]
+class Project(namedtuple('Project', ['key', 'name'])):
+    def __str__(self):
+        return self.key
 
-filesystem.create_directories(proj for proj, _ in PROJECTS)
+PROJECTS = IndexedOrderedDict([
+    ('DTM50', Project(key='DTM50', name='Terrain model (50 m)')),
+    ('DTM10', Project(key='DTM10', name='Terrain model (10 m)')),
+    ('DTM1',  Project(key='DTM1',  name='Terrain model (1 m)')),
+    ('DOM50', Project(key='DOM50', name='Object model (50 m)')),
+    ('DOM10', Project(key='DOM10', name='Object model (10 m)')),
+    ('DOM1',  Project(key='DOM1',  name='Object model (1 m)')),
+])
+
+filesystem.create_directories(project.key for project in PROJECTS.values())
 
 
 def make_request(endpoint, params):
@@ -241,6 +246,8 @@ class Polygon(DeclarativeBase):
         """
         filters = [cls.polygon == self]
         for key, value in kwargs.items():
+            if isinstance(value, Project):
+                value = value.key
             filters.append(getattr(cls, key) == value)
         with Database().session() as s:
             yield s.query(cls).filter(*filters)
@@ -322,7 +329,7 @@ class Polygon(DeclarativeBase):
         coords = ';'.join(f'{x},{y}' for x, y in coords)
         params = {
             'CopyEmail': email,
-            'Projects': project,
+            'Projects': project.key,
             'CoordInput': coords,
             'ProjectMerge': 1 if dedicated else 0,
             'InputWkid': 25833,      # ETRS89 / UTM zone 33N
@@ -338,7 +345,7 @@ class Polygon(DeclarativeBase):
         elif not response.get('Success', False):
             return 'Unknown error'
 
-        job = Job(polygon=self, project=project, dedicated=dedicated, jobid=response['JobID'])
+        job = Job(polygon=self, project=project.key, dedicated=dedicated, jobid=response['JobID'])
         with Database().session() as s:
             s.add(job)
 

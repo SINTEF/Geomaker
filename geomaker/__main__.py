@@ -356,7 +356,7 @@ class JobDialog(QDialog):
         self.setFixedSize(self.size())
 
     def done(self, result):
-        project, _ = PROJECTS[self.ui.projectlist.selectedIndexes()[0].row()]
+        project = PROJECTS.values()[self.ui.projectlist.selectedIndexes()[0].row()]
         dedicated = self.ui.dedicated.checkState() == Qt.Checked
 
         # Set these attributes so that the caller can access them
@@ -504,7 +504,7 @@ class GUI(Ui_MainWindow):
         self.polylist.doubleClicked.connect(self.polylist_double_clicked)
 
         # Create thumbnail widgets for each project
-        for project, _ in PROJECTS:
+        for project in PROJECTS.values():
             self._project_tabs[project] = ThumbnailWidget(project)
         self.projects.currentChanged.connect(self.project_tab_changed)
 
@@ -550,7 +550,7 @@ class GUI(Ui_MainWindow):
         selected_widget = self.projects.currentWidget()
         while self.projects.count() > 0:
             self.projects.removeTab(0)
-        for project, _ in PROJECTS:
+        for project in PROJECTS.values():
             self.refresh_tabs_hint(project, select=False)
             self._project_tabs[project].update_poly(poly)
         new_index = max(0, self.projects.indexOf(selected_widget))
@@ -587,7 +587,7 @@ class GUI(Ui_MainWindow):
             1 for proj, page in self._project_tabs.items()
             if proj < project and self.projects.indexOf(page) > -1
         )
-        self.projects.insertTab(insertion_index, widget, project)
+        self.projects.insertTab(insertion_index, widget, project.key)
         if select:
             self.projects.setCurrentIndex(insertion_index)
 
