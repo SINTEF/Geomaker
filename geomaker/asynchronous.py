@@ -8,6 +8,10 @@ from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QProgressDialog, QProgressBar
 
 
+class ThreadAbortedException(BaseException):
+    pass
+
+
 class ProgressManager(QObject):
     """A wrapper for QProgressBar or QProgressDialog with a unified
     interface, that can be used to listen to signals emitted by
@@ -111,7 +115,7 @@ class ThreadManager(QObject):
         """Execute FUNC synchronously and report the return value back."""
         try:
             retval = func()
-        except:
+        except Exception:
             traceback.print_exc()
             retval = None
         self._worker.respond_synchronously(retval)
@@ -138,6 +142,21 @@ class ThreadManager(QObject):
             args = self._queue.pop(0)
             self._run(*args)
 
+    def close(self):
+        if self._thread is not None:
+            self._worker.close()
+            self._thread.quit()
+            self._thread.wait()
+
+
+def check_close(func):
+    @wraps(func)
+    def inner(self, *args, **kwargs):
+        if self._closing:
+            raise ThreadAbortedException
+        return func(self, *args, **kwargs)
+    return inner
+
 
 class WorkManager(QObject):
     """A QObject that executes a body of work in a thread.
@@ -162,6 +181,7 @@ class WorkManager(QObject):
     def __init__(self, job):
         super().__init__()
         self.job = job
+        self._closing = False
 
         # The job may consist of sub-jobs. To simplify, each atomic
         # job is assumed to constitute 100 progress points.
@@ -179,23 +199,31 @@ class WorkManager(QObject):
         self.received = False
         self.response = None
 
+    def close(self):
+        self._closing = True
+
     @pyqtSlot()
     def process(self):
         """Main entry point for job processing."""
-        result = self.job.process(self)
+        try:
+            result = self.job.process(self)
+            self.finished.emit(result)
+        except ThreadAbortedException:
+            pass
         from .db import Database
         Database().remove_session()
-        self.finished.emit(result)
 
     def report_total_progress(self):
         """Compute the total progress and emit the progress_changed signal."""
         progress = int(self.root_progress + 100 * self.current_progress / self.current_max)
         self.progress_changed.emit(progress)
 
+    @check_close
     def report_message(self, message):
         """Emit the message_changed signal. Called from the job."""
         self.message_changed.emit(message)
 
+    @check_close
     def report_finished(self, num=1):
         """Signal that NUM jobs have been finished."""
         self.root_progress += 100 * num
@@ -203,16 +231,19 @@ class WorkManager(QObject):
         self.current_max = 100
         self.report_total_progress()
 
+    @check_close
     def report_max(self, value):
         """Change the maximal progress value of the currently running job."""
         self.current_max = value
         self.report_total_progress()
 
+    @check_close
     def report_progress(self, value):
         """Change the progress value of the currently running job."""
         self.current_progress = value
         self.report_total_progress()
 
+    @check_close
     def increment_progress(self, value=1):
         """Change the progress value of the currently running job."""
         self.current_progress += value
@@ -310,7 +341,7 @@ class AsyncJob(Job):
                 retval = self.func(*args, **kwargs)
             else:
                 retval = self.func(*args, **kwargs, manager=manager)
-        except:
+        except Exception:
             traceback.print_exc()
             retval = None
         self.post_process(manager)

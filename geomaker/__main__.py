@@ -305,6 +305,8 @@ class ExporterDialog(QDialog):
                 })
 
     def done(self, result):
+        self.threadmanager.close()
+
         if result != QDialog.Accepted:
             return super().done(result)
         self.update_datafile()
@@ -694,10 +696,14 @@ class GUI(Ui_MainWindow):
         job = SequenceJob([job.refresh() for job in Database().jobs()])
         self.threadmanager.enqueue(job, self.progress, priority='low')
 
+    def close(self):
+        self.threadmanager.close()
+
 
 def main():
     """Primary GUI entry point."""
 
     app = QApplication(sys.argv)
     gui = GUI()
+    app.aboutToQuit.connect(gui.close)
     sys.exit(app.exec_())
