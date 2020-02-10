@@ -24,16 +24,16 @@ class QResizeLabel(QLabel):
 
     def setPixmap(self, pixmap):
         self._pixmap = pixmap
-        self._update_pixmap()
+        self._update_pixmap(True)
 
     def resizeEvent(self, *args, **kwargs):
         retval = super().resizeEvent(*args, **kwargs)
-        self._update_pixmap()
+        self._update_pixmap(False)
         return retval
 
-    def _update_pixmap(self):
-        if self._pixmap.isNull():
+    def _update_pixmap(self, force):
+        if self._pixmap.isNull() and force:
             super().setPixmap(self._pixmap)
-        else:
+        elif not self._pixmap.isNull():
             pixmap = self._pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             super().setPixmap(pixmap)

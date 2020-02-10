@@ -1,23 +1,24 @@
+from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
-from io import BytesIO
+from itertools import tee, islice
 import json
+from math import ceil
 from operator import methodcaller
 from pathlib import Path
 from zipfile import ZipFile
 
 from area import area as geojson_area
 from bidict import bidict
-from matplotlib import cm as colormap
+from indexed import IndexedOrderedDict
+import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
-from PIL import Image
-import requests
-import toml
-from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
+from . import export, polyfit, filesystem, util
+from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -26,147 +27,20 @@ from sqlalchemy.ext.declarative import declarative_base
 DeclarativeBase = declarative_base()
 
 
-# Create database if it does not exist
-DATA_ROOT = XDG_DATA_HOME / 'geomaker'
-THUMBNAIL_ROOT = DATA_ROOT / 'thumbnails'
+class Project(namedtuple('Project', ['key', 'name'])):
+    def __str__(self):
+        return self.key
 
-for d in [DATA_ROOT, THUMBNAIL_ROOT]:
-    if not d.exists():
-        d.mkdir()
+PROJECTS = IndexedOrderedDict([
+    ('DTM50', Project(key='DTM50', name='Terrain model (50 m)')),
+    ('DTM10', Project(key='DTM10', name='Terrain model (10 m)')),
+    ('DTM1',  Project(key='DTM1',  name='Terrain model (1 m)')),
+    ('DOM50', Project(key='DOM50', name='Object model (50 m)')),
+    ('DOM10', Project(key='DOM10', name='Object model (10 m)')),
+    ('DOM1',  Project(key='DOM1',  name='Object model (1 m)')),
+])
 
-# Config file
-CONFIG_FILE = XDG_CONFIG_HOME / 'geomaker.toml'
-
-# Projects
-PROJECTS = [
-    ('DTM50', 'Terrain model (50 m)'),
-    ('DTM10', 'Terrain model (10 m)'),
-    ('DTM1',  'Terrain model (1 m)'),
-    ('DOM50', 'Object model (50 m)'),
-    ('DOM10', 'Object model (10 m)'),
-    ('DOM1',  'Object model (1 m)'),
-]
-
-for project, _ in PROJECTS:
-    proj_dir = DATA_ROOT / project
-    if not proj_dir.exists():
-        proj_dir.mkdir()
-
-
-def make_request(endpoint, params):
-    """Submit a request to hoydedata.no at the given endpoint.
-    'Params' should be a dict of parameters.  Returns a tuple with
-    HTTP status code and potentially a dict of results.
-    """
-    params = json.dumps(params)
-    url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
-    response = requests.get(url)
-    if response.status_code != 200:
-        return response.status_code, None
-    return response.status_code, json.loads(response.text)
-
-
-def download_geotiffs(url, project, dedicated):
-    """Download a zip-file with GeoTIFF data, in standard hoydedata.no format.
-    This unzips the file and saves all the TIFFs to disk, but does not
-    update the database. Return a list of filenames.
-    """
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None
-
-    filenames = []
-    with ZipFile(BytesIO(response.content), 'r') as z:
-        tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
-        if dedicated:
-            assert len(tifpaths) == 1
-
-        for path in tifpaths:
-            data = z.read(path)
-            if dedicated:
-                filename = hashlib.sha256(data).hexdigest() + '.tiff'
-            else:
-                filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
-            filename = DATA_ROOT / project / filename
-            with open(filename, 'wb') as f:
-                f.write(data)
-            filenames.append(filename)
-    return filenames
-
-
-class AsyncWorker:
-    """Utility class representing a asynchronous package of work.  The
-    'work' argument is a function to be called in a separate thread,
-    and the 'callback' argument is a function to be called with the
-    return value of the 'work' function.
-
-    This object is suitable as an argument the main GUI run_thread
-    function, as it returns its own callback partially applied with
-    the result of the work package.
-
-    Thus:
-        a(b())
-
-    is the same as:
-        worker = AsyncWorker(a, b)
-        retval = worker()    # calls a()
-        retval()             # calls b(...)
-    """
-
-    def __init__(self, work, callback):
-        self.work = work
-        self.callback = callback
-
-    def __call__(self):
-        retval = self.work()
-        return partial(self.callback, retval)
-
-
-def async(func):
-    """Wrap a function with an optional 'async' keyword argument.
-    The inner function should return a tuple of two callables: a work
-    function (taking no arguments) and a callback function (taking a
-    single argument, the return value of the work function).
-
-    If called with 'async' true, the return value is an AsyncWorker
-    object which can be used as described. If 'async' is false, the
-    worker and callback functions are called synchronously and the
-    return value of the callback is returned.
-    """
-
-    @wraps(func)
-    def wrapper(*args, async=False, **kwargs):
-        work, callback = func(*args, **kwargs)
-        if async:
-            return AsyncWorker(work, callback)
-        else:
-            return callback(work())
-    return wrapper
-
-
-class Config(dict):
-    """Geomaker config file mapped to a dict.
-    Usually found at ~/.config/geomaker.toml.
-    """
-
-    def __init__(self):
-        super().__init__()
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r') as f:
-                self.update(toml.load(f))
-
-    def verify(self, querier):
-        if not 'email' in self:
-            querier.message(
-                'E-mail address',
-                'An e-mail address must be configured to make requests to the Norwegian Mapping Authority',
-            )
-            self['email'] = querier.query_str('E-mail address', 'E-mail:')
-        self.write()
-
-    def write(self):
-        with open(CONFIG_FILE, 'w') as f:
-            toml.dump(self, f)
+filesystem.create_directories(project.key for project in PROJECTS.values())
 
 
 class Polygon(DeclarativeBase):
@@ -209,43 +83,53 @@ class Polygon(DeclarativeBase):
     # provide a property-like interface to it from here.
     @property
     def lfid(self):
-        return db.lfid.inverse.get(self.id, None)
+        return Database().lfid.inverse.get(self.id, None)
 
     @lfid.setter
     def lfid(self, value):
-        db.update_lfid(self, value)
+        Database().update_lfid(self, value)
 
-    @property
-    def geometry(self):
-        """List of x, y coordinates (in latitude and longitude) making
-        up this polygon.
+    def geometry(self, coords='latlon'):
+        """List of x, y coordinates (in a given coordinate system)
+        making up this polygon.
         """
         for p in self.points:
-            yield [p.x, p.y]
+            yield p.in_coords(coords)
+
+    def edges(self, coords='latlon'):
+        a, b = tee(self.geometry(coords), 2)
+        for pta, ptb in zip(a, islice(b, 1, None)):
+            yield (pta, ptb)
+
+    @property
+    def npts(self):
+        """Order of polygon (number of vertices)."""
+        with Database().session() as s:
+            return s.query(Point).filter(Point.polygon == self).count() - 1
 
     @property
     def west(self):
         """Westernmost bounding point (longitude)."""
-        return min(x for x,_ in self.geometry)
+        return min(x for x,_ in self.geometry())
 
     @property
     def east(self):
         """Easternmost bounding point (longitude)."""
-        return max(x for x,_ in self.geometry)
+        return max(x for x,_ in self.geometry())
 
     @property
     def south(self):
         """Southernmost bounding point (latitude)."""
-        return min(y for _,y in self.geometry)
+        return min(y for _,y in self.geometry())
 
     @property
     def north(self):
         """Northernmost bounding point (latitude)."""
-        return max(y for _,y in self.geometry)
+        return max(y for _,y in self.geometry())
 
     @property
     def area(self):
-        return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry)]})
+        return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry())]})
 
     @contextmanager
     def _assoc_query(self, cls, **kwargs):
@@ -256,8 +140,10 @@ class Polygon(DeclarativeBase):
         """
         filters = [cls.polygon == self]
         for key, value in kwargs.items():
+            if isinstance(value, Project):
+                value = value.key
             filters.append(getattr(cls, key) == value)
-        with db.session() as s:
+        with Database().session() as s:
             yield s.query(cls).filter(*filters)
 
     def _single_assoc(self, cls, **kwargs):
@@ -296,7 +182,8 @@ class Polygon(DeclarativeBase):
 
     def delete_dedicated(self, project):
         """Remove the dedicated GeoTIFF file associated with a project."""
-        db.delete_if(self.dedicated(project))
+        Database().delete_if(self.dedicated(project))
+        self.maybe_delete_thumbnail(project)
 
     def delete_tiles(self, project):
         """Remove the non-dedicated GeoTIFF files associated with a
@@ -305,6 +192,7 @@ class Polygon(DeclarativeBase):
         """
         with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
             q.delete()
+        self.maybe_delete_thumbnail(project)
 
     def njobs(self, **kwargs):
         """The number of jobs currently running matching the keyword argument filters."""
@@ -318,7 +206,7 @@ class Polygon(DeclarativeBase):
     def delete_job(self, project, dedicated):
         """Delete the currently running job for the given project."""
         obj = self.job(project, dedicated)
-        db.delete_if(obj)
+        Database().delete_if(obj)
 
     def create_job(self, project, dedicated, email):
         """Create a new job. This will fail if existing data files or
@@ -330,12 +218,12 @@ class Polygon(DeclarativeBase):
             assert self.ntiles(project) == 0
         assert self.job(project, dedicated) is None
 
-        coords = [pt.z33n for pt in self.points]
+        coords = list(self.geometry('utm33n'))
         coords = [(int(x), int(y)) for x, y in coords]
         coords = ';'.join(f'{x},{y}' for x, y in coords)
         params = {
             'CopyEmail': email,
-            'Projects': project,
+            'Projects': project.key,
             'CoordInput': coords,
             'ProjectMerge': 1 if dedicated else 0,
             'InputWkid': 25833,      # ETRS89 / UTM zone 33N
@@ -343,7 +231,7 @@ class Polygon(DeclarativeBase):
             'NHM': 1,                # National altitude models
         }
 
-        code, response = make_request('startExport', params)
+        code, response = util.make_request('startExport', params)
         if response is None:
             return f'HTTP code {code}'
         elif 'Error'in response:
@@ -351,55 +239,117 @@ class Polygon(DeclarativeBase):
         elif not response.get('Success', False):
             return 'Unknown error'
 
-        job = Job(polygon=self, project=project, dedicated=dedicated, jobid=response['JobID'])
-        with db.session() as s:
+        job = Job(polygon=self, project=project.key, dedicated=dedicated, jobid=response['JobID'])
+        with Database().session() as s:
             s.add(job)
 
-    def update_thumbnail(self, project, dedicated):
-        """Update the thumbnail for the given project.
-        If a thumbnail already exists for that project, this function
-        will silently do nothing, unless 'dedicated' is true.
-        The source for the thumbnail will come from the dedicated data
-        file, if one exists, or the tiled data files if it does not.
-        """
-        if self.thumbnail(project) is not None and not dedicated:
-            return
-        db.delete_if(self.thumbnail(project))
+    def geographic_angle(self, coords):
+        points = list(self.geometry())
+        center = sum(points) / len(points)
+        up = util.convert_latlon(center + (0.1, 0.0), coords)
+        vec = up - util.convert_latlon(center, coords)
+        return -np.arctan2(vec[1], vec[0])
+
+    def _rectangularize(self, mode, rotate, coords):
+        points = list(self.geometry(coords))
+        if rotate == 'free' and mode == 'interior':
+            rect, area, theta = polyfit.largest_rectangle(points)
+        elif rotate == 'north' and mode == 'interior':
+            theta = self.geographic_angle(coords)
+            rect, area = polyfit.largest_rotated_rectangle(points, theta)
+        elif mode == 'interior':
+            rect, area = polyfit.largest_aligned_rectangle(points)
+            theta = 0.0
+        elif rotate == 'free':
+            rect, area, theta = polyfit.smallest_rectangle(points)
+        elif rotate == 'north':
+            theta = self.geographic_angle(coords)
+            rect, area = polyfit.smallest_rotated_rectangle(points, theta)
+        else:
+            rect, area = polyfit.smallest_aligned_rectangle(points)
+            theta = 0.0
+        return rect, area, theta
+
+    @staticmethod
+    @async_job(maximum='simple')
+    def check_area(self, mode, rotate, coords):
+        reference_area = polyfit.polygon_area(list(self.geometry(coords)))
+        _, actual_area, theta = self._rectangularize(mode, rotate, coords)
+        return abs(actual_area - reference_area) / reference_area, theta
+
+    def generate_meshgrid(self, mode, rotate, coords, resolution=None, maxpts=None):
+        # Establish the corner points in the target coordinate system,
+        # so that we can compute the resolution in each direction
+        if mode == 'actual':
+            assert self.npts == 4
+            a, b, c, d, _ = self.geometry(coords)
+        else:
+            (a, b, c, d, _), _, _ = self._rectangularize(mode, rotate, coords)
+
+        # Compute parametric arrays in x and y with the correct lengths
+        width = np.linalg.norm(b - a)
+        height = np.linalg.norm(c - b)
+        if resolution is None:
+            resolution = max(width, height) / maxpts
+        nx = int(ceil(height / resolution))
+        ny = int(ceil(width / resolution))
+        xt, yt = np.meshgrid(np.linspace(0, 1, nx), np.linspace(0, 1, ny), indexing='ij')
+
+        # In 'actual' coordinates, the output is x from west to east, y from south to north.
+        # Therefore we permute the corner points here.
+        # TODO: This also assumes that the vertices are ordered in a specific way!
+        if mode == 'actual':
+            d, c, b, a, _ = self.geometry()
+
+        # Assemble x and y arrays in target geometry with image-style coordinates
+        # (x goes from north to south, y from west to east)
+        x = (1-xt) * (1-yt) * d[1] + xt * (1-yt) * a[1] + xt * yt * b[1] + (1-xt) * yt * c[1]
+        y = (1-xt) * (1-yt) * d[0] + xt * (1-yt) * a[0] + xt * yt * b[0] + (1-xt) * yt * c[0]
+
+        # In 'actual' mode, convert to target coordinates and swap the axes
+        if mode == 'actual':
+            x, y = util.convert_latlon((y, x), coords)
+
+        return x, y
+
+    def generate_triangulation(self, coords, resolution):
+        a, b, c, d, _ = self.geometry(coords)
+        mesh_in = tri.MeshInfo()
+        mesh_in.set_points([a, b, c, d])
+        mesh_in.set_facets([(0, 3), (3, 2), (2, 1), (1, 0)])
+        mesh_out = tri.build(mesh_in, max_volume=resolution**2/2)
+
+        x = np.array([pt[0] for pt in mesh_out.points])
+        y = np.array([pt[1] for pt in mesh_out.points])
+        return x, y, np.array(mesh_out.elements)
+
+    def interpolate(self, project, x, y):
+        assert x.shape == y.shape
+        data = np.zeros(x.shape)
         if self.dedicated(project):
             tiffs = [self.dedicated(project)]
         else:
             tiffs = list(self.tiles(project))
-
-        # Crop image to actual region
-        coords = [pt.z33n for pt in self.points]
-        east = min(x for x,_ in coords)
-        west = max(x for x,_ in coords)
-        south = min(y for _,y in coords)
-        north = max(y for _,y in coords)
-
-        # Compute a suitable resolution
-        res = max(north - south, east - west) / 640
-
-        # Meshgrid of x,y points in Z33N coordinates
-        nx = int((north - south) // res)
-        ny = int((west - east) // res)
-        x, y = np.meshgrid(np.linspace(north, south, nx), np.linspace(east, west, ny), indexing='ij')
-
-        # Create a data array and interpolate all GeoTIFF objects onto it
-        image = np.zeros((nx, ny))
         for tiff in tiffs:
-            tiff.interpolate(image, x, y)
+            tiff.interpolate(data, x, y)
+        return data
 
-        # Apply the terrain color map and save to disk
-        image /= np.max(image)
-        image = colormap.terrain(image, bytes=True)
-        filename = THUMBNAIL_ROOT / (hashlib.sha256(image.data).hexdigest() + '.png')
-        image = Image.fromarray(image)
-        image.save(filename)
+    def maybe_delete_thumbnail(self, project):
+        if self.dedicated(project) or self.ntiles(project) > 0:
+            return
+        Database().delete_if(self.thumbnail(project))
+
+    @staticmethod
+    @async_job()
+    def _update_thumbnail(self, project, dedicated, manager):
+        if self.thumbnail(project) is not None and not dedicated:
+            return
+        Database().delete_if(self.thumbnail(project))
+        filename = export.export(self, project, manager, maxpts=640, directory=filesystem.THUMBNAIL_ROOT)
 
         # Create a new Thumbnail object in the database
         thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
-        with db.session() as s:
+        with Database().session() as s:
             s.add(thumb)
 
 
@@ -432,11 +382,8 @@ class Point(DeclarativeBase):
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), nullable=False)
     polygon = orm.relationship('Polygon', back_populates='points', lazy='immediate')
 
-    @property
-    def z33n(self):
-        """Convert to Z33N coordinates."""
-        x, y, *_ = from_latlon(self.y, self.x, force_zone_number=33, force_zone_letter='N')
-        return x, y
+    def in_coords(self, coords):
+        return util.convert_latlon(np.array([self.x, self.y]), coords)
 
 
 class GeoTIFF(DeclarativeBase):
@@ -505,9 +452,9 @@ class GeoTIFF(DeclarativeBase):
         rx, ry = self.resolution
 
         # Mask of which indices apply to this TIFF
-        I, J = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
-        x = (self.north - x[I, J]) / rx
-        y = (y[I, J] - self.west) / ry
+        M = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
+        x = (self.north - x[M]) / rx
+        y = (y[M] - self.west) / ry
 
         # Compute indices of the element for each point
         left = np.floor(x).astype(int)
@@ -521,8 +468,8 @@ class GeoTIFF(DeclarativeBase):
         refdata = self.as_array()
         refdata[np.where(refdata < 0)] = 0
 
-        data[I, J] = np.maximum(
-            data[I, J],
+        data[M] = np.maximum(
+            data[M],
             refdata[left,   down]   * (1 - ref_left) * (1 - ref_down) +
             refdata[left+1, down]   * ref_left       * (1 - ref_down) +
             refdata[left,   down+1] * (1 - ref_left) * ref_down +
@@ -564,19 +511,12 @@ class Job(DeclarativeBase):
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
-    @async
-    def refresh(self):
-        """Async-capable method for refreshing the status of the job."""
-        worker = partial(make_request, 'exportStatus', {'JobID': self.jobid})
-        callback = self.refresh_commit
-        return worker, callback
-
-    # Used as a callback for refresh()
-    # SQLAlchemy doesn't like it when you modify objects outside their original thread
-    def refresh_commit(self, args):
-        if self.stage == 'downloaded':
-            return
-        code, response = args
+    @staticmethod
+    @async_job(message='Updating job', maximum='simple')
+    def _request_update(self):
+        if self.stage in ('downloaded', 'complete'):
+            return self
+        code, response = util.make_request('exportStatus', {'JobID': self.jobid})
         if response is None:
             self.stage = 'error'
             self.error = f'HTTP code {code}'
@@ -584,51 +524,69 @@ class Job(DeclarativeBase):
             self.stage = response['Status']
             if self.stage == 'complete':
                 self.url = response['Url']
-        db.commit()
-        return (self.polygon, self.project)
+        Database().commit()
+        if self.url is not None:
+            return self
+        return False
 
-    @async
-    def download(self):
-        """Async-capable method for downloading job data files.
-        This automatically updates the polygon thumbnail and finally
-        deletes the job.
-        """
-        assert self.stage == 'complete'
-        assert self.url is not None
-        worker = partial(download_geotiffs, self.url, self.project, self.dedicated)
-        callback = self.download_commit
-        return worker, callback
+    @staticmethod
+    @async_job(message='Downloading data')
+    def _download_data(self, manager):
+        responsedata = util.download_streaming(self.url, manager)
 
-    # Used as a callback for download()
-    # SQLAlchemy doesn't like it when you modify objects outside their original thread
-    def download_commit(self, filenames):
-        for filename in filenames:
-            geotiff = GeoTIFF(filename=str(filename))
-            geotiff.populate()
-            polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
-            with db.session() as s:
-                s.add(geotiff)
-                s.add(polytiff)
+        filenames = []
+        with ZipFile(responsedata, 'r') as z:
+            tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
+            if self.dedicated:
+                assert len(tifpaths) == 1
+            for path in tifpaths:
+                filedata = z.read(path)
+                if self.dedicated:
+                    filename = hashlib.sha256(data).hexdigest() + '.tiff'
+                else:
+                    filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
+                filename = filesystem.project_file(self.project, filename)
+                with open(filename, 'wb') as f:
+                    f.write(filedata)
 
-        # TODO: Generate thumbnails asynchronously
-        self.polygon.update_thumbnail(self.project, self.dedicated)
-        retval = (self.polygon, self.project)
-        with db.session() as s:
+            with Database().session() as s:
+                geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
+                if geotiff is None:
+                    geotiff = GeoTIFF(filename=str(filename))
+                    geotiff.populate()
+                    s.add(geotiff)
+                s.add(PolyTIFF(
+                    polygon=self.polygon,
+                    geotiff=geotiff,
+                    project=self.project,
+                    dedicated=self.dedicated
+                ))
+
+        polygon = self.polygon
+        with Database().session() as s:
             s.delete(self)
-        return retval
+        return polygon
+
+    def refresh(self):
+        return PipeJob([
+            Database().get_object(Job, self.id),
+            Job._request_update(),
+            ConditionalJob(Job._download_data()),
+            Polygon._update_thumbnail(project=self.project, dedicated=self.dedicated),
+        ])
 
 
-class Database:
+class Database(metaclass=util.SingletonMeta):
     """Primary database interface for use by the GUI. Intended to be
     used as a singleton.
     """
 
     def __init__(self):
-        self.engine = sql.create_engine(f'sqlite:///{DATA_ROOT}/db.sqlite3')
+        self.engine = sql.create_engine(f'sqlite:///{filesystem.DATA_ROOT}/db.sqlite3')
         DeclarativeBase.metadata.create_all(self.engine)
 
-        # The session object lasts for the lifetime of the program
-        self._session = orm.sessionmaker(bind=self.engine)()
+        # The session object lasts for the lifetime of one thread
+        self._session = orm.scoped_session(orm.sessionmaker(bind=self.engine))
 
         # A bidirectional dictionary mapping database Polygon IDs to leaflet.js IDs
         self.lfid = bidict()
@@ -641,13 +599,16 @@ class Database:
         """A context manager yielding a session object, committing
         after use or rolling back on error.
         """
-        session = self._session
+        session = self._session()
         try:
             yield session
             session.commit()
         except:
             session.rollback()
             raise
+
+    def remove_session(self):
+        self._session.remove()
 
     def commit(self):
         """Forcibly commit all pending changes."""
@@ -667,6 +628,11 @@ class Database:
         """Get the nth polygon by order of name."""
         with self.session() as s:
             return s.query(Polygon).order_by(Polygon.name)[index]
+
+    @async_job(maximum='empty')
+    def get_object(self, cls, id):
+        with self.session() as s:
+            return s.query(cls).get(id)
 
     @contextmanager
     def _job_query(self, stage=None):
@@ -775,6 +741,3 @@ class Database:
         with self.session() as s:
             s.delete(poly)
         self.message('after_delete')
-
-
-db = Database()
