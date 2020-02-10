@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
 from itertools import tee, islice
-from io import BytesIO
 import json
 from math import ceil
 from operator import methodcaller
@@ -16,11 +15,10 @@ from indexed import IndexedOrderedDict
 import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
-import requests
-from utm import from_latlon
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import polyfit, image, filesystem, util
+from . import export, polyfit, filesystem, util
+from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -43,110 +41,6 @@ PROJECTS = IndexedOrderedDict([
 ])
 
 filesystem.create_directories(project.key for project in PROJECTS.values())
-
-
-def make_request(endpoint, params):
-    """Submit a request to hoydedata.no at the given endpoint.
-    'Params' should be a dict of parameters.  Returns a tuple with
-    HTTP status code and potentially a dict of results.
-    """
-    params = json.dumps(params)
-    url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
-    response = requests.get(url)
-    if response.status_code != 200:
-        return response.status_code, None
-    return response.status_code, json.loads(response.text)
-
-
-def download_geotiffs(url, project, dedicated):
-    """Download a zip-file with GeoTIFF data, in standard hoydedata.no format.
-    This unzips the file and saves all the TIFFs to disk, but does not
-    update the database. Return a list of filenames.
-    """
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None
-
-    filenames = []
-    with ZipFile(BytesIO(response.content), 'r') as z:
-        tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
-        if dedicated:
-            assert len(tifpaths) == 1
-
-        for path in tifpaths:
-            data = z.read(path)
-            if dedicated:
-                filename = hashlib.sha256(data).hexdigest() + '.tiff'
-            else:
-                filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
-            filename = filesystem.project_file(project, filename)
-            with open(filename, 'wb') as f:
-                f.write(data)
-            filenames.append(filename)
-    return filenames
-
-
-def convert_latlon(point, coords):
-    if coords == 'latlon':
-        return point
-    elif coords.startswith('utm'):
-        zonenum = int(coords[3:-1])
-        zoneletter = coords[-1].upper()
-        x, y, *_ = from_latlon(point[1], point[0], force_zone_number=33, force_zone_letter='N')
-        if isinstance(point[0], np.ndarray):
-            return x, y
-        return np.array([x, y])
-    raise ValueError(f'Unknown coordinate system: {coords}')
-
-
-class AsyncWorker:
-    """Utility class representing a asynchronous package of work.  The
-    'work' argument is a function to be called in a separate thread,
-    and the 'callback' argument is a function to be called with the
-    return value of the 'work' function.
-
-    This object is suitable as an argument the main GUI run_thread
-    function, as it returns its own callback partially applied with
-    the result of the work package.
-
-    Thus:
-        a(b())
-
-    is the same as:
-        worker = AsyncWorker(a, b)
-        retval = worker()    # calls a()
-        retval()             # calls b(...)
-    """
-
-    def __init__(self, work, callback):
-        self.work = work
-        self.callback = callback
-
-    def __call__(self):
-        retval = self.work()
-        return partial(self.callback, retval)
-
-
-def asynchronous(func):
-    """Wrap a function with an optional 'asynchronous' keyword argument.
-    The inner function should return a tuple of two callables: a work
-    function (taking no arguments) and a callback function (taking a
-    single argument, the return value of the work function).
-
-    If called with 'asynchronous' true, the return value is an AsyncWorker
-    object which can be used as described. If 'asynchronous' is false, the
-    worker and callback functions are called synchronously and the
-    return value of the callback is returned.
-    """
-
-    @wraps(func)
-    def wrapper(*args, asynchronous=False, **kwargs):
-        work, callback = func(*args, **kwargs)
-        if asynchronous:
-            return AsyncWorker(work, callback)
-        else:
-            return callback(work())
-    return wrapper
 
 
 class Polygon(DeclarativeBase):
@@ -337,7 +231,7 @@ class Polygon(DeclarativeBase):
             'NHM': 1,                # National altitude models
         }
 
-        code, response = make_request('startExport', params)
+        code, response = util.make_request('startExport', params)
         if response is None:
             return f'HTTP code {code}'
         elif 'Error'in response:
@@ -352,8 +246,8 @@ class Polygon(DeclarativeBase):
     def geographic_angle(self, coords):
         points = list(self.geometry())
         center = sum(points) / len(points)
-        up = convert_latlon(center + np.array([0.1, 0.0]), coords)
-        vec = up - convert_latlon(center, coords)
+        up = util.convert_latlon(center + (0.1, 0.0), coords)
+        vec = up - util.convert_latlon(center, coords)
         return -np.arctan2(vec[1], vec[0])
 
     def _rectangularize(self, mode, rotate, coords):
@@ -376,9 +270,12 @@ class Polygon(DeclarativeBase):
             theta = 0.0
         return rect, area, theta
 
+    @staticmethod
+    @async_job(maximum='simple')
     def check_area(self, mode, rotate, coords):
         reference_area = polyfit.polygon_area(list(self.geometry(coords)))
         _, actual_area, theta = self._rectangularize(mode, rotate, coords)
+        print('yoyo')
         return abs(actual_area - reference_area) / reference_area, theta
 
     def generate_meshgrid(self, mode, rotate, coords, resolution=None, maxpts=None):
@@ -412,7 +309,7 @@ class Polygon(DeclarativeBase):
 
         # In 'actual' mode, convert to target coordinates and swap the axes
         if mode == 'actual':
-            x, y = convert_latlon((y, x), coords)
+            x, y = util.convert_latlon((y, x), coords)
 
         return x, y
 
@@ -443,22 +340,13 @@ class Polygon(DeclarativeBase):
             return
         Database().delete_if(self.thumbnail(project))
 
-    def update_thumbnail(self, project, dedicated):
-        """Update the thumbnail for the given project.
-        If a thumbnail already exists for that project, this function
-        will silently do nothing, unless 'dedicated' is true.
-        The source for the thumbnail will come from the dedicated data
-        file, if one exists, or the tiled data files if it does not.
-        """
+    @staticmethod
+    @async_job()
+    def _update_thumbnail(self, project, dedicated, manager):
         if self.thumbnail(project) is not None and not dedicated:
             return
         Database().delete_if(self.thumbnail(project))
-
-        x, y = self.generate_meshgrid('exterior', 'none', 'utm33n', maxpts=640)
-        data = self.interpolate(project, x, y)
-        filename = hashlib.sha256(data.data).hexdigest() + '.png'
-        filename = filesystem.thumbnail_file(filename)
-        image.array_to_image(data, 'png', 'terrain', filename)
+        filename = export.export(self, project, manager, maxpts=640, directory=filesystem.THUMBNAIL_ROOT)
 
         # Create a new Thumbnail object in the database
         thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
@@ -496,7 +384,7 @@ class Point(DeclarativeBase):
     polygon = orm.relationship('Polygon', back_populates='points', lazy='immediate')
 
     def in_coords(self, coords):
-        return convert_latlon(np.array([self.x, self.y]), coords)
+        return util.convert_latlon(np.array([self.x, self.y]), coords)
 
 
 class GeoTIFF(DeclarativeBase):
@@ -624,19 +512,12 @@ class Job(DeclarativeBase):
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
-    @asynchronous
-    def refresh(self):
-        """Async-capable method for refreshing the status of the job."""
-        worker = partial(make_request, 'exportStatus', {'JobID': self.jobid})
-        callback = self.refresh_commit
-        return worker, callback
-
-    # Used as a callback for refresh()
-    # SQLAlchemy doesn't like it when you modify objects outside their original thread
-    def refresh_commit(self, args):
-        if self.stage == 'downloaded':
-            return
-        code, response = args
+    @staticmethod
+    @async_job(message='Updating job', maximum='simple')
+    def _request_update(self):
+        if self.stage in ('downloaded', 'complete'):
+            return self
+        code, response = util.make_request('exportStatus', {'JobID': self.jobid})
         if response is None:
             self.stage = 'error'
             self.error = f'HTTP code {code}'
@@ -645,37 +526,55 @@ class Job(DeclarativeBase):
             if self.stage == 'complete':
                 self.url = response['Url']
         Database().commit()
-        return (self.polygon, self.project)
+        if self.url is not None:
+            return self
+        return False
 
-    @asynchronous
-    def download(self):
-        """Async-capable method for downloading job data files.
-        This automatically updates the polygon thumbnail and finally
-        deletes the job.
-        """
-        assert self.stage == 'complete'
-        assert self.url is not None
-        worker = partial(download_geotiffs, self.url, self.project, self.dedicated)
-        callback = self.download_commit
-        return worker, callback
+    @staticmethod
+    @async_job(message='Downloading data')
+    def _download_data(self, manager):
+        responsedata = util.download_streaming(self.url, manager)
 
-    # Used as a callback for download()
-    # SQLAlchemy doesn't like it when you modify objects outside their original thread
-    def download_commit(self, filenames):
-        for filename in filenames:
-            geotiff = GeoTIFF(filename=str(filename))
-            geotiff.populate()
-            polytiff = PolyTIFF(polygon=self.polygon, geotiff=geotiff, project=self.project, dedicated=self.dedicated)
+        filenames = []
+        with ZipFile(responsedata, 'r') as z:
+            tifpaths = [path for path in z.namelist() if path.endswith('.tif')]
+            if self.dedicated:
+                assert len(tifpaths) == 1
+            for path in tifpaths:
+                filedata = z.read(path)
+                if self.dedicated:
+                    filename = hashlib.sha256(data).hexdigest() + '.tiff'
+                else:
+                    filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
+                filename = filesystem.project_file(self.project, filename)
+                with open(filename, 'wb') as f:
+                    f.write(filedata)
+
             with Database().session() as s:
-                s.add(geotiff)
-                s.add(polytiff)
+                geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
+                if geotiff is None:
+                    geotiff = GeoTIFF(filename=str(filename))
+                    geotiff.populate()
+                    s.add(geotiff)
+                s.add(PolyTIFF(
+                    polygon=self.polygon,
+                    geotiff=geotiff,
+                    project=self.project,
+                    dedicated=self.dedicated
+                ))
 
-        # TODO: Generate thumbnails asynchronously
-        self.polygon.update_thumbnail(self.project, self.dedicated)
-        retval = (self.polygon, self.project)
+        polygon = self.polygon
         with Database().session() as s:
             s.delete(self)
-        return retval
+        return polygon
+
+    def refresh(self):
+        return PipeJob([
+            Database().get_object(Job, self.id),
+            Job._request_update(),
+            ConditionalJob(Job._download_data()),
+            Polygon._update_thumbnail(project=self.project, dedicated=self.dedicated),
+        ])
 
 
 class Database(metaclass=util.SingletonMeta):
@@ -687,8 +586,8 @@ class Database(metaclass=util.SingletonMeta):
         self.engine = sql.create_engine(f'sqlite:///{filesystem.DATA_ROOT}/db.sqlite3')
         DeclarativeBase.metadata.create_all(self.engine)
 
-        # The session object lasts for the lifetime of the program
-        self._session = orm.sessionmaker(bind=self.engine)()
+        # The session object lasts for the lifetime of one thread
+        self._session = orm.scoped_session(orm.sessionmaker(bind=self.engine))
 
         # A bidirectional dictionary mapping database Polygon IDs to leaflet.js IDs
         self.lfid = bidict()
@@ -701,13 +600,16 @@ class Database(metaclass=util.SingletonMeta):
         """A context manager yielding a session object, committing
         after use or rolling back on error.
         """
-        session = self._session
+        session = self._session()
         try:
             yield session
             session.commit()
         except:
             session.rollback()
             raise
+
+    def remove_session(self):
+        self._session.remove()
 
     def commit(self):
         """Forcibly commit all pending changes."""
@@ -727,6 +629,11 @@ class Database(metaclass=util.SingletonMeta):
         """Get the nth polygon by order of name."""
         with self.session() as s:
             return s.query(Polygon).order_by(Polygon.name)[index]
+
+    @async_job(maximum='empty')
+    def get_object(self, cls, id):
+        with self.session() as s:
+            return s.query(cls).get(id)
 
     @contextmanager
     def _job_query(self, stage=None):
