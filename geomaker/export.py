@@ -41,7 +41,6 @@ def export(polygon, project, manager, boundary_mode='exterior',
            maxpts=None, format='png', colormap='terrain',
            zero_sea_level=True, filename=None, directory=None):
 
-    print('Exporting in', __import__('threading').get_ident())
     manager.report_max(3)
 
     image_mode = is_image_format(format)
