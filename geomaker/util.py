@@ -1,6 +1,7 @@
 from io import BytesIO
 import json
 
+from humanfriendly import format_size
 import numpy as np
 import requests
 from utm import from_latlon
@@ -34,11 +35,18 @@ def download_streaming(url, mgr):
     response = requests.get(url, stream=True)
     if response.status_code != 200:
         return None
-    mgr.report_max(int(response.headers['Content-Length']))
+    nbytes = int(response.headers['Content-Length'])
+    mgr.report_max(nbytes)
     responsedata = BytesIO()
-    for chunk in response.iter_content(512):
+    down = 0
+    for chunk in response.iter_content(16384):
         responsedata.write(chunk)
+        down += len(chunk)
         mgr.increment_progress(len(chunk))
+        mgr.report_message('Downloading · {}/{}'.format(
+            format_size(down, keep_width=True),
+            format_size(nbytes, keep_width=True)
+        ))
     return responsedata
 
 

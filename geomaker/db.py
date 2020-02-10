@@ -12,7 +12,6 @@ from zipfile import ZipFile
 from area import area as geojson_area
 from bidict import bidict
 from indexed import IndexedOrderedDict
-import meshpy.triangle as tri
 import numpy as np
 import tifffile as tif
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
@@ -314,14 +313,14 @@ class Polygon(DeclarativeBase):
 
     def generate_triangulation(self, coords, resolution):
         a, b, c, d, _ = self.geometry(coords)
-        mesh_in = tri.MeshInfo()
-        mesh_in.set_points([a, b, c, d])
-        mesh_in.set_facets([(0, 3), (3, 2), (2, 1), (1, 0)])
-        mesh_out = tri.build(mesh_in, max_volume=resolution**2/2)
-
-        x = np.array([pt[0] for pt in mesh_out.points])
-        y = np.array([pt[1] for pt in mesh_out.points])
-        return x, y, np.array(mesh_out.elements)
+        outpts, outelems = export.triangulate(
+            np.array([a, b, c, d]),
+            np.array([(0, 3), (3, 2), (2, 1), (1, 0)]),
+            max_area=resolution**2/2,
+        )
+        x = np.array([pt[0] for pt in outpts])
+        y = np.array([pt[1] for pt in outpts])
+        return x, y, outelems
 
     def interpolate(self, project, x, y):
         assert x.shape == y.shape
@@ -549,18 +548,18 @@ class Job(DeclarativeBase):
                 with open(filename, 'wb') as f:
                     f.write(filedata)
 
-            with Database().session() as s:
-                geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
-                if geotiff is None:
-                    geotiff = GeoTIFF(filename=str(filename))
-                    geotiff.populate()
-                    s.add(geotiff)
-                s.add(PolyTIFF(
-                    polygon=self.polygon,
-                    geotiff=geotiff,
-                    project=self.project,
-                    dedicated=self.dedicated
-                ))
+                with Database().session() as s:
+                    geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
+                    if geotiff is None:
+                        geotiff = GeoTIFF(filename=str(filename))
+                        geotiff.populate()
+                        s.add(geotiff)
+                    s.add(PolyTIFF(
+                        polygon=self.polygon,
+                        geotiff=geotiff,
+                        project=self.project,
+                        dedicated=self.dedicated
+                    ))
 
         polygon = self.polygon
         with Database().session() as s:
