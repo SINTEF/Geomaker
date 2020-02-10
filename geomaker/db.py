@@ -548,18 +548,18 @@ class Job(DeclarativeBase):
                 with open(filename, 'wb') as f:
                     f.write(filedata)
 
-            with Database().session() as s:
-                geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
-                if geotiff is None:
-                    geotiff = GeoTIFF(filename=str(filename))
-                    geotiff.populate()
-                    s.add(geotiff)
-                s.add(PolyTIFF(
-                    polygon=self.polygon,
-                    geotiff=geotiff,
-                    project=self.project,
-                    dedicated=self.dedicated
-                ))
+                with Database().session() as s:
+                    geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
+                    if geotiff is None:
+                        geotiff = GeoTIFF(filename=str(filename))
+                        geotiff.populate()
+                        s.add(geotiff)
+                    s.add(PolyTIFF(
+                        polygon=self.polygon,
+                        geotiff=geotiff,
+                        project=self.project,
+                        dedicated=self.dedicated
+                    ))
 
         polygon = self.polygon
         with Database().session() as s:
