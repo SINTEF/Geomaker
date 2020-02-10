@@ -23,7 +23,6 @@ setup(
         'bidict',
         'indexed.py',
         'matplotlib',
-        'meshpy',
         'numpy',
         'numpy-stl',
         'PyQt5',

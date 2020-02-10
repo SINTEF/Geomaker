@@ -66,6 +66,8 @@ fail to install from PyPi.
 - PyQt5
 - PyQtWebEngine
 
-Finally, the meshpy library for generating triangular meshes contains
-compiled components which require pybind11, which must also be
-installed.
+Finally, for generating STL output the
+[triangle](http://www.cs.cmu.edu/~quake/triangle.html) library must be
+installed. Geomaker will search for `libtriangle-1.6.so` (let me know
+if you need this to be configurable). This can be installed in Ubuntu
+18.04 with `apt install libtriangle-1.6`.

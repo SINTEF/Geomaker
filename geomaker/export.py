@@ -1,3 +1,4 @@
+import ctypes as ct
 import hashlib
 from pathlib import Path
 
@@ -90,3 +91,95 @@ def export(polygon, project, manager, boundary_mode='exterior',
     manager.increment_progress()
 
     return filename
+
+
+class TriangulateIO(ct.Structure):
+    _fields_ = [
+        ('pointlist', ct.POINTER(ct.c_double)),
+        ('pointattributelist', ct.POINTER(ct.c_double)),
+        ('pointmarkerlist', ct.POINTER(ct.c_int)),
+        ('numberofpoints', ct.c_int),
+        ('numberofpointattributes', ct.c_int),
+        ('trianglelist', ct.POINTER(ct.c_int)),
+        ('triangleattributelist', ct.POINTER(ct.c_double)),
+        ('trianglearealist', ct.POINTER(ct.c_double)),
+        ('neighborlist', ct.POINTER(ct.c_int)),
+        ('numberoftriangles', ct.c_int),
+        ('numberofcorners', ct.c_int),
+        ('numberoftriangleattributes', ct.c_int),
+        ('segmentlist', ct.POINTER(ct.c_int)),
+        ('segmentmarkerlist', ct.POINTER(ct.c_int)),
+        ('numberofsegments', ct.c_int),
+        ('holelist', ct.POINTER(ct.c_double)),
+        ('numberofholes', ct.c_int),
+        ('regionlist', ct.POINTER(ct.c_double)),
+        ('numberofregions', ct.c_int),
+        ('edgelist', ct.POINTER(ct.c_int)),
+        ('edgemarkerlist', ct.POINTER(ct.c_int)),
+        ('normlist', ct.POINTER(ct.c_double)),
+        ('numberofedges', ct.c_int),
+    ]
+
+
+def triangulate(points, segments, max_area=None, verbose=False, library='libtriangle-1.6.so'):
+    lib = ct.cdll.LoadLibrary(library)
+    triangulate = lib.triangulate
+    triangulate.argtypes = [
+        ct.c_char_p,
+        ct.POINTER(TriangulateIO),
+        ct.POINTER(TriangulateIO),
+        ct.POINTER(TriangulateIO),
+    ]
+
+    free = lib.trifree
+    free.argtypes = [ct.c_void_p]
+
+    inpoints = (ct.c_double * points.size)()
+    inpoints[:] = list(points.flat)
+
+    insegments = (ct.c_int * segments.size)()
+    insegments[:] = list(segments.flat)
+
+    inmesh = TriangulateIO(
+        inpoints, None, None, len(points), 0,
+        None, None, None, None, 0, 3, 0,
+        insegments, None, len(segments),
+        None, 0, None, 0, None, None, None, 0
+    )
+
+    outmesh = TriangulateIO()
+
+    options = 'pzjq'
+    if verbose:
+        options += 'VV'
+    else:
+        options += 'Q'
+    if max_area:
+        options += f'a{max_area}'
+
+    triangulate(options.encode(), ct.byref(inmesh), ct.byref(outmesh), None)
+
+    npts = outmesh.numberofpoints
+    outpoints = np.zeros((npts, 2))
+    outpoints.flat[:] = outmesh.pointlist[:npts*2]
+
+    nelems = outmesh.numberoftriangles
+    outelements = np.zeros((nelems, 3), dtype=int)
+    outelements.flat[:] = outmesh.trianglelist[:nelems*3]
+
+    free(outmesh.pointlist)
+    free(outmesh.pointattributelist)
+    free(outmesh.pointmarkerlist)
+    free(outmesh.trianglelist)
+    free(outmesh.triangleattributelist)
+    free(outmesh.trianglearealist)
+    free(outmesh.neighborlist)
+    free(outmesh.segmentlist)
+    free(outmesh.segmentmarkerlist)
+    free(outmesh.holelist)
+    free(outmesh.regionlist)
+    free(outmesh.edgelist)
+    free(outmesh.edgemarkerlist)
+    free(outmesh.normlist)
+
+    return outpoints, outelements
