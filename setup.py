@@ -22,6 +22,7 @@ setup(
         'area',
         'bidict',
         'indexed.py',
+        'humanfriendly',
         'matplotlib',
         'numpy',
         'numpy-stl',
