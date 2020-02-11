@@ -77,6 +77,8 @@ class ExporterDialog(QDialog):
         ('jpeg', {'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
         ('g2', {'g2'}, 'GoTools B-Splines (G2)'),
         ('stl', {'stl'}, 'Stereolithography (STL)'),
+        ('vtk', {'vtk'}, 'Visualization Toolkit Legacy'),
+        ('vtu', {'vtu'}, 'Visualization Toolkit XML-based'),
     ]
 
     COORDS = [
@@ -251,6 +253,7 @@ class ExporterDialog(QDialog):
             'Images (*.png *.jpg *.jpeg)',
             'GoTools (*.g2)',
             'Stereolithography (*.stl)'
+            'Visualization Toolkit (*.vtk *.vtu)'
         ]
         filename, selected_filter = QFileDialog.getSaveFileName(
             self, 'Save file', self.ui.filename.currentText(),
