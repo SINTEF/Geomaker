@@ -49,10 +49,9 @@ well-established compiled wheels for download:
 - bidict (bidirectional dictionaries)
 - matplotlib (for color maps)
 - numpy (no scientific code can be without)
-- numpy-stl (for saving STL meshes)
+- pillow (for saving images)
 - requests (for making API queries to hoydedata.no)
 - scipy (for optimization routines)
-- splipy (for producing B-Spline output)
 - sqlalchemy (for maintaining persistent data on disk)
 - tifffile (for reading GeoTIFF files)
 - toml (for the config file)
@@ -66,7 +65,13 @@ fail to install from PyPi.
 - PyQt5
 - PyQtWebEngine
 
-Finally, for generating STL output the
+The following packages are optional, for generating various output:
+
+- numpy-stl (for saving STL meshes)
+- splipy (for producing B-Spline output)
+- vtk (for VTU and VTK format)
+
+Additionally, for generating STL output the
 [triangle](http://www.cs.cmu.edu/~quake/triangle.html) library must be
 installed. Geomaker will search for `libtriangle-1.6.so` (let me know
 if you need this to be configurable). This can be installed in Ubuntu

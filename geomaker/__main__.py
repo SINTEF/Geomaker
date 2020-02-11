@@ -312,6 +312,14 @@ class ExporterDialog(QDialog):
 
         if result != QDialog.Accepted:
             return super().done(result)
+
+        if not export.has_support(self.format):
+            QMessageBox.critical(
+                self, 'Error',
+                f'Additional packages must be installed for {self.format.upper()} output.',
+            )
+            return
+
         self.update_datafile()
 
         export_job = export.export_job(

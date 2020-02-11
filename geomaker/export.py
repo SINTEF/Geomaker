@@ -4,14 +4,23 @@ from pathlib import Path
 
 from matplotlib import cm as colormap
 import numpy as np
-from PIL import Image
-from splipy import Surface, BSplineBasis
-from splipy.io import G2
-from stl.mesh import Mesh as STLMesh
-import vtk
-import vtk.util.numpy_support as vtknp
 
 from .asynchronous import async_job
+
+
+def has_support(fmt):
+    try:
+        if is_image_format(fmt):
+            import PIL
+        elif fmt == 'g2':
+            import splipy
+        elif fmt == 'stl':
+            import stl
+        elif fmt in ('vtk', 'vtu'):
+            import vtk
+    except ImportError:
+        return False
+    return True
 
 
 def list_colormaps():
@@ -25,6 +34,7 @@ def array_to_image(data, fmt, cmap, filename):
     data = getattr(colormap, cmap)(data, bytes=True)
     if data.shape[-1] == 4 and fmt == 'jpeg':
         data = data[..., :3]
+    from PIL import Image
     image = Image.fromarray(data)
     image.save(str(filename), format=fmt.upper())
 
@@ -77,6 +87,8 @@ def export(polygon, project, manager, boundary_mode='exterior',
     if image_mode:
         array_to_image(data, format, colormap, filename)
     elif format == 'g2':
+        from splipy import Surface, BSplineBasis
+        from splipy.io import G2
         cpts = np.stack([x, y, data], axis=2)
         knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape]
         bases = [BSplineBasis(order=2, knots=kts) for kts in knots]
@@ -84,12 +96,15 @@ def export(polygon, project, manager, boundary_mode='exterior',
         with G2(filename) as g2:
             g2.write(srf)
     elif format == 'stl':
+        from stl.mesh import Mesh as STLMesh
         mesh = STLMesh(np.zeros(tri.shape[0], STLMesh.dtype))
         mesh.vectors[:,:,0] = x[tri]
         mesh.vectors[:,:,1] = y[tri]
         mesh.vectors[:,:,2] = data[tri]
         mesh.save(filename)
     elif format in ('vtk', 'vtu'):
+        import vtk
+        import vtk.util.numpy_support as vtknp
         pointsarray = np.stack([x, y, data], axis=1)
         points = vtk.vtkPoints()
         points.SetData(vtknp.numpy_to_vtk(pointsarray))

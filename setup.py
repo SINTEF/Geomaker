@@ -18,6 +18,11 @@ setup(
     entry_points={
         'console_scripts': ['geomaker=geomaker.__main__:main'],
     },
+    extras_require={
+        'Splines': ['Splipy'],
+        'STL': ['numpy-stl'],
+        'VTK': ['vtk'],
+    },
     install_requires=[
         'area',
         'bidict',
@@ -25,17 +30,15 @@ setup(
         'humanfriendly',
         'matplotlib',
         'numpy',
-        'numpy-stl',
+        'Pillow',
         'PyQt5',
         'PyQtWebEngine',
         'requests',
         'scipy',
-        'Splipy',
         'SQLAlchemy',
         'tifffile',
         'toml',
         'utm',
-        'vtk',
         'xdg',
     ],
 )
