@@ -23,6 +23,10 @@ def has_support(fmt):
     return True
 
 
+def supports_texture(fmt):
+    return fmt in ('vtk', 'vtu')
+
+
 def list_colormaps():
     return colormap.cmap_d.keys()
 
@@ -51,9 +55,13 @@ def export_job(*args, **kwargs):
 def export(polygon, project, manager, boundary_mode='exterior',
            rotation_mode='none', coords='utm33n', resolution=None,
            maxpts=None, format='png', colormap='terrain',
-           zero_sea_level=True, filename=None, directory=None):
+           texture=False, zero_sea_level=True, filename=None,
+           directory=None):
 
-    manager.report_max(3)
+    if not supports_texture(format):
+        texture = False
+
+    manager.report_max(4 if texture else 3)
 
     image_mode = is_image_format(format)
     if not image_mode:
@@ -69,6 +77,15 @@ def export(polygon, project, manager, boundary_mode='exterior',
             resolution=resolution, maxpts=maxpts
         )
     manager.increment_progress()
+
+    if texture:
+        manager.report_message('Generating texture coordinates')
+        left = np.min(x)
+        right = np.max(x)
+        down = np.min(y)
+        up = np.max(y)
+        uvcoords = np.stack([(x - left) / (right - left), (y - down) / (up - down)], axis=1)
+        manager.increment_progress()
 
     manager.report_message('Generating data')
     if image_mode:
@@ -117,6 +134,9 @@ def export(polygon, project, manager, boundary_mode='exterior',
         grid = vtk.vtkUnstructuredGrid()
         grid.SetPoints(points)
         grid.SetCells(vtk.VTK_TRIANGLE, cells)
+
+        if texture:
+            grid.GetPointData().SetTCoords(vtknp.numpy_to_vtk(uvcoords))
 
         writer = (vtk.vtkUnstructuredGridWriter if format == 'vtk' else vtk.vtkXMLUnstructuredGridWriter)()
         writer.SetFileName(filename)
