@@ -8,6 +8,8 @@ from PIL import Image
 from splipy import Surface, BSplineBasis
 from splipy.io import G2
 from stl.mesh import Mesh as STLMesh
+import vtk
+import vtk.util.numpy_support as vtknp
 
 from .asynchronous import async_job
 
@@ -49,7 +51,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         rotation_mode = 'none'
 
     manager.report_message('Generating geometry')
-    if format == 'stl':
+    if format in ('stl', 'vtk', 'vtu'):
         x, y, tri = polygon.generate_triangulation(coords, resolution)
     else:
         x, y = polygon.generate_meshgrid(
@@ -87,6 +89,25 @@ def export(polygon, project, manager, boundary_mode='exterior',
         mesh.vectors[:,:,1] = y[tri]
         mesh.vectors[:,:,2] = data[tri]
         mesh.save(filename)
+    elif format in ('vtk', 'vtu'):
+        pointsarray = np.stack([x, y, data], axis=1)
+        points = vtk.vtkPoints()
+        points.SetData(vtknp.numpy_to_vtk(pointsarray))
+
+        ncells = len(tri)
+        cellarray = np.concatenate([3*np.ones((ncells, 1), dtype=int), tri], axis=1)
+        cells = vtk.vtkCellArray()
+        cells.SetCells(ncells, vtknp.numpy_to_vtkIdTypeArray(cellarray.ravel()))
+
+        grid = vtk.vtkUnstructuredGrid()
+        grid.SetPoints(points)
+        grid.SetCells(vtk.VTK_TRIANGLE, cells)
+
+        writer = (vtk.vtkUnstructuredGridWriter if format == 'vtk' else vtk.vtkXMLUnstructuredGridWriter)()
+        writer.SetFileName(filename)
+        writer.SetInputData(grid)
+        writer.Write()
+
     manager.increment_progress()
 
     return filename

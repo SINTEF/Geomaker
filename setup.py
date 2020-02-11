@@ -35,6 +35,7 @@ setup(
         'tifffile',
         'toml',
         'utm',
+        'vtk',
         'xdg',
     ],
 )
