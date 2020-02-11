@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>793</width>
-    <height>314</height>
+    <height>346</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -52,46 +52,14 @@
            <property name="bottomMargin">
             <number>0</number>
            </property>
-           <item row="4" column="0">
-            <widget class="QLabel" name="label_2">
+           <item row="0" column="0">
+            <widget class="QLabel" name="Location">
              <property name="text">
-              <string>Resolution:</string>
+              <string>File:</string>
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="filename">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-               <horstretch>1</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="editable">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="6" column="1" colspan="2">
-            <widget class="QComboBox" name="colormaps"/>
-           </item>
-           <item row="4" column="1" colspan="2">
-            <widget class="QDoubleSpinBox" name="resolution">
-             <property name="suffix">
-              <string>m</string>
-             </property>
-             <property name="decimals">
-              <number>5</number>
-             </property>
-             <property name="maximum">
-              <double>1000.000000000000000</double>
-             </property>
-             <property name="singleStep">
-              <double>0.100000000000000</double>
-             </property>
-            </widget>
-           </item>
-           <item row="8" column="0" colspan="3">
+           <item row="9" column="0" colspan="3">
             <widget class="QWidget" name="widget_3" native="true">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -1468,10 +1436,45 @@
              </layout>
             </widget>
            </item>
-           <item row="0" column="0">
-            <widget class="QLabel" name="Location">
+           <item row="0" column="1">
+            <widget class="QComboBox" name="filename">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="editable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1" colspan="2">
+            <widget class="QComboBox" name="formats"/>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="label">
              <property name="text">
-              <string>File:</string>
+              <string>Format:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="1" colspan="2">
+            <widget class="QComboBox" name="colormaps"/>
+           </item>
+           <item row="4" column="1" colspan="2">
+            <widget class="QDoubleSpinBox" name="resolution">
+             <property name="suffix">
+              <string>m</string>
+             </property>
+             <property name="decimals">
+              <number>5</number>
+             </property>
+             <property name="maximum">
+              <double>1000.000000000000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.100000000000000</double>
              </property>
             </widget>
            </item>
@@ -1482,10 +1485,10 @@
              </property>
             </widget>
            </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="label">
+           <item row="4" column="0">
+            <widget class="QLabel" name="label_2">
              <property name="text">
-              <string>Format:</string>
+              <string>Resolution:</string>
              </property>
             </widget>
            </item>
@@ -1495,9 +1498,6 @@
               <string>Browse...</string>
              </property>
             </widget>
-           </item>
-           <item row="1" column="1" colspan="2">
-            <widget class="QComboBox" name="formats"/>
            </item>
            <item row="2" column="1" colspan="2">
             <widget class="QComboBox" name="coordinates"/>
@@ -1652,6 +1652,13 @@
                </widget>
               </item>
              </layout>
+            </widget>
+           </item>
+           <item row="8" column="1">
+            <widget class="QCheckBox" name="textures">
+             <property name="text">
+              <string>Include texture coordinates</string>
+             </property>
             </widget>
            </item>
           </layout>

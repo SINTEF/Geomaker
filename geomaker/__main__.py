@@ -108,6 +108,7 @@ class ExporterDialog(QDialog):
         self.ui.filename.addItems(data.get('export-filenames', []))
         self.ui.resolution.setValue(data.get('export-resolution', 1.0))
         self.ui.zero_sea_level.setChecked(data.get('export-zero-sea', True))
+        self.ui.textures.setChecked(data.get('export-textures', True))
         self.boundary_mode = data.get('export-boundary-mode', 'interior')
         self.rotation_mode = data.get('export-rotation-mode', 'north')
         self.coords = data.get('export-coords', 'utm33n')
@@ -204,6 +205,7 @@ class ExporterDialog(QDialog):
         self.ui.north_rot.setEnabled(self.image_mode)
         self.ui.free_rot.setEnabled(self.image_mode)
         self.ui.colormaps.setEnabled(self.image_mode)
+        self.ui.textures.setEnabled(export.supports_texture(self.format))
 
         filename = Path(self.ui.filename.currentText())
         if filename.suffix[1:] not in self.format_suffixes:
@@ -298,6 +300,7 @@ class ExporterDialog(QDialog):
                 'export-resolution': self.ui.resolution.value(),
                 'export-coords': self.coords,
                 'export-zero-sea': self.ui.zero_sea_level.isChecked(),
+                'export-textures': self.ui.textures.isChecked(),
             })
 
             if self.image_mode:
@@ -330,6 +333,7 @@ class ExporterDialog(QDialog):
             resolution=self.ui.resolution.value(),
             format=self.format,
             colormap=self.colormap,
+            texture=self.ui.textures.isChecked(),
             zero_sea_level=self.ui.zero_sea_level.isChecked(),
             filename=self.ui.filename.currentText(),
         )
