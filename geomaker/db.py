@@ -32,6 +32,7 @@ PROJECTS = IndexedOrderedDict([
     ('DOM50', projects.DigitalHeightModel(key='DOM50', name='Object model (50 m)')),
     ('DOM10', projects.DigitalHeightModel(key='DOM10', name='Object model (10 m)')),
     ('DOM1',  projects.DigitalHeightModel(key='DOM1',  name='Object model (1 m)')),
+    ('NIB',   projects.TiledImageModel(key='NIB', name='Norge i bilder')),
 ])
 
 filesystem.create_directories(project.key for project in PROJECTS.values())

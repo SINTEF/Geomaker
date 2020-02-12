@@ -16,3 +16,9 @@ class DigitalHeightModel(Project):
 
     def __init__(self, key, name):
         super().__init__(key, name, 'utm33n')
+
+
+class TiledImageModel(Project):
+
+    def __init__(self, key, name):
+        super().__init__(key, name)
