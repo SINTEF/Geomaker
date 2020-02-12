@@ -30,6 +30,7 @@ class DigitalHeightModel(Project):
     supports_email = True
     supports_dedicated = True
     zoomlevels = None
+    datatype = 'geotiff'
 
     def __init__(self, key, name):
         super().__init__(key, name, 'utm33n')
@@ -63,9 +64,10 @@ class TiledImageModel(Project):
     supports_email = False
     supports_dedicated = False
     zoomlevels = (2, 16)
+    datatype = 'geoimage'
 
     def __init__(self, key, name):
-        super().__init__(key, name, 'spherical-mercator')
+        super().__init__(key, name, 'latlon')
 
     def create_job(self, coords, zoom, dedicated):
         assert dedicated == False
@@ -88,4 +90,4 @@ class TiledImageModel(Project):
                 f.write(r.content)
             manager.increment_progress()
 
-        return filenames, self
+        return filenames

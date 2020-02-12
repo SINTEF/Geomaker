@@ -12,11 +12,12 @@ from area import area as geojson_area
 from bidict import bidict
 from indexed import IndexedOrderedDict
 import numpy as np
+from pygeotile.tile import Tile as PyGeoTile
 import tifffile as tif
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
 from . import export, polyfit, projects, filesystem, util, asynchronous
-from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
+from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob, AbstractJob
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -216,12 +217,43 @@ class Polygon(DeclarativeBase):
         assert self.job(project, dedicated) is None
 
         retval = project.create_job(list(self.geometry()), **kwargs)
+        if isinstance(retval, AbstractJob):
+            return PipeJob([
+                retval,
+                Polygon._assign_files(selfid=self.id, dedicated=kwargs.get('dedicated', False), project=project),
+                Polygon._update_thumbnail(project=project, dedicated=dedicated),
+            ])
+
         if not isinstance(retval, int):
             return retval
 
         job = Job(polygon=self, project=project.key, dedicated=kwargs.get('dedicated', False), jobid=retval)
         with Database().session() as s:
             s.add(job)
+
+    @staticmethod
+    @async_job(maximum='empty')
+    def _assign_files(filenames, selfid, dedicated, project):
+        with Database().session() as s:
+            self = s.query(Polygon).get(selfid)
+
+        for filename in filenames:
+            with Database().session() as s:
+                datafile = s.query(DataFile).filter(DataFile.filename == str(filename)).one_or_none()
+                if datafile is None:
+                    datafile = {'geoimage': GeoImage, 'geotiff': GeoTIFF}[project.datatype]()
+                    datafile.filename = str(filename)
+                    datafile.coords = project.coords
+                    datafile.populate()
+                    s.add(datafile)
+                s.add(PolyData(
+                    polygon=self,
+                    datafile=datafile,
+                    project=project.key,
+                    dedicated=dedicated
+                ))
+
+        return self
 
     def geographic_angle(self, coords):
         points = list(self.geometry())
@@ -373,6 +405,12 @@ class DataFile(DeclarativeBase):
     filename = sql.Column(sql.String, nullable=False)
     discriminator = sql.Column('type', sql.String)
 
+    coords = sql.Column(sql.String, nullable=False)
+    east = sql.Column(sql.Float, nullable=False)
+    west = sql.Column(sql.Float, nullable=False)
+    south = sql.Column(sql.Float, nullable=False)
+    north = sql.Column(sql.Float, nullable=False)
+
     # Polygon intermediate association
     assocs = orm.relationship(
         'PolyData', back_populates='datafile', lazy='immediate',
@@ -386,15 +424,25 @@ def delete_datafile(mapper, connection, datafile):
     Path(datafile.filename).unlink()
 
 
+class GeoImage(DataFile):
+    """ORM representation of a Google maps style iamge tile."""
+
+    __mapper_args__ = {'polymorphic_identity': 'geoimage'}
+
+    @property
+    def tile_coords(self):
+        zoom, i, j = map(int, Path(self.filename).stem.split('-'))
+
+    def populate(self):
+        zoom, i, j = self.tile_coords
+        tile = PyGeoTile(i, j, zoom)
+        (self.south, self.west), (self.north, self.east) = tile.bounds
+
+
 class GeoTIFF(DataFile):
     """ORM representation of a GeoTIFF file."""
 
     __mapper_args__ = {'polymorphic_identity': 'geotiff'}
-
-    east = sql.Column(sql.Float, nullable=False)
-    west = sql.Column(sql.Float, nullable=False)
-    south = sql.Column(sql.Float, nullable=False)
-    north = sql.Column(sql.Float, nullable=False)
 
     @lru_cache(maxsize=1)
     def _dataset(self):
