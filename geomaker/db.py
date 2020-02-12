@@ -1,4 +1,3 @@
-from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
@@ -16,7 +15,7 @@ import numpy as np
 import tifffile as tif
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import export, polyfit, filesystem, util
+from . import export, polyfit, projects, filesystem, util
 from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
 
 import sqlalchemy as sql
@@ -26,17 +25,13 @@ from sqlalchemy.ext.declarative import declarative_base
 DeclarativeBase = declarative_base()
 
 
-class Project(namedtuple('Project', ['key', 'name'])):
-    def __str__(self):
-        return self.key
-
 PROJECTS = IndexedOrderedDict([
-    ('DTM50', Project(key='DTM50', name='Terrain model (50 m)')),
-    ('DTM10', Project(key='DTM10', name='Terrain model (10 m)')),
-    ('DTM1',  Project(key='DTM1',  name='Terrain model (1 m)')),
-    ('DOM50', Project(key='DOM50', name='Object model (50 m)')),
-    ('DOM10', Project(key='DOM10', name='Object model (10 m)')),
-    ('DOM1',  Project(key='DOM1',  name='Object model (1 m)')),
+    ('DTM50', projects.DigitalHeightModel(key='DTM50', name='Terrain model (50 m)')),
+    ('DTM10', projects.DigitalHeightModel(key='DTM10', name='Terrain model (10 m)')),
+    ('DTM1',  projects.DigitalHeightModel(key='DTM1',  name='Terrain model (1 m)')),
+    ('DOM50', projects.DigitalHeightModel(key='DOM50', name='Object model (50 m)')),
+    ('DOM10', projects.DigitalHeightModel(key='DOM10', name='Object model (10 m)')),
+    ('DOM1',  projects.DigitalHeightModel(key='DOM1',  name='Object model (1 m)')),
 ])
 
 filesystem.create_directories(project.key for project in PROJECTS.values())
