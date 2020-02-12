@@ -358,52 +358,73 @@ class JobDialog(QDialog):
 
         self.ui.email.setText(ConfigFile()['email'])
         self.ui.projectlist.setModel(ProjectsModel())
+        self.ui.projectlist.selectionModel().selectionChanged.connect(self.project_changed)
+        self.ui.zoomslider.valueChanged.connect(self.zoom_changed)
 
         self.ui.okbtn.clicked.connect(self.accept)
         self.ui.cancelbtn.clicked.connect(self.reject)
 
         self.setFixedSize(self.size())
+        self.project_changed()
+
+    @property
+    def project(self):
+        return PROJECTS.values()[self.ui.projectlist.selectedIndexes()[0].row()]
+
+    @property
+    def dedicated(self):
+        return self.ui.dedicated.isChecked()
+
+    def project_changed(self):
+        project = self.project
+        self.ui.emaillabel.setVisible(project.supports_email)
+        self.ui.email.setVisible(project.supports_email)
+        self.ui.dedicated.setVisible(project.supports_dedicated)
+        self.ui.zoomlabel.setVisible(bool(project.zoomlevels))
+        self.ui.zoomslider.setVisible(bool(project.zoomlevels))
+
+        if project.zoomlevels:
+            lo, hi = project.zoomlevels
+            self.ui.zoomslider.setMinimum(lo)
+            self.ui.zoomslider.setMaximum(hi)
+
+    def zoom_changed(self):
+        value = self.ui.zoomslider.value()
+        self.ui.zoomlabel.setText(f'Zoom level: {value}')
 
     def done(self, result):
-        project = PROJECTS.values()[self.ui.projectlist.selectedIndexes()[0].row()]
-        dedicated = self.ui.dedicated.checkState() == Qt.Checked
-
-        # Set these attributes so that the caller can access them
-        self.project = project
-        self.dedicated = dedicated
-
         # If the dialog was canceled, no further validation
         if result != QDialog.Accepted:
             return super().done(result)
 
-        if dedicated and self.poly.dedicated(project):
+        if self.dedicated and self.poly.dedicated(self.project):
             answer = QMessageBox.question(
                 self, 'Delete existing dedicated file?',
                 'This region already has a dedicated data file. Delete it and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_dedicated(project)
+            self.poly.delete_dedicated(self.project)
 
-        if not dedicated and self.poly.ntiles(project) > 0:
+        if not self.dedicated and self.poly.ntiles(self.project) > 0:
             answer = QMessageBox.question(
                 self, 'Disassociate existing tiles?',
                 'This region already has associated tiles. Disassociate them and download again?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_tiles(project)
+            self.poly.delete_tiles(self.project)
 
-        if self.poly.job(project, dedicated):
+        if self.poly.job(self.project, self.dedicated):
             answer = QMessageBox.question(
                 self, 'Delete existing job?',
                 'This region already has a job of this type. Delete it and restart?'
             )
             if answer == QMessageBox.No:
                 return
-            self.poly.delete_job(project, dedicated)
+            self.poly.delete_job(self.project, self.dedicated)
 
-        retval = self.poly.create_job(project, dedicated, self.ui.email.text())
+        retval = self.poly.create_job(self.project, self.dedicated, self.ui.email.text())
         if retval:
             QMessageBox.critical(self, 'Error', retval)
             return

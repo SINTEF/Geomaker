@@ -135,7 +135,7 @@ class Polygon(DeclarativeBase):
         """
         filters = [cls.polygon == self]
         for key, value in kwargs.items():
-            if isinstance(value, Project):
+            if isinstance(value, projects.Project):
                 value = value.key
             filters.append(getattr(cls, key) == value)
         with Database().session() as s:
