@@ -69,6 +69,7 @@ function initialize() {
         'Kartverket Enkelt': L.tileLayer(
             'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=egk&zoom={z}&x={x}&y={y}'
         ),
+        'Norge i bilder': L.tileLayer('https://kartverket.maplytic.no/tile/_nib/{z}/{x}/{y}.jpeg'),
         'OpenStreetMap': L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
         'OpenTopoMap': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
         'Google Roads': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=m@189&gl=cn&x={x}&y={y}&z={z}'),
