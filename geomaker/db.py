@@ -59,13 +59,13 @@ class Polygon(DeclarativeBase):
         cascade='save-update, merge, delete, delete-orphan',
     )
 
-    # GeoTIFF intermediate association
+    # Data file intermediate association
     assocs = orm.relationship(
-        'PolyTIFF', back_populates='polygon', lazy='immediate',
+        'PolyData', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
     )
 
-    # Pending jobs for acquiring new GeoTIFF files
+    # Pending jobs for acquiring new data files files
     jobs = orm.relationship(
         'Job', order_by='Job.jobid', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
@@ -153,39 +153,39 @@ class Polygon(DeclarativeBase):
         return self._single_assoc(Thumbnail, project=project)
 
     def dedicated(self, project):
-        """Get the dedicated GeoTIFF file associated with a project."""
-        obj = self._single_assoc(PolyTIFF, project=project, dedicated=True)
+        """Get the dedicated data file associated with a project."""
+        obj = self._single_assoc(PolyData, project=project, dedicated=True)
         if obj:
-            obj = obj.geotiff
+            obj = obj.datafile
         return obj
 
     def ntiles(self, project):
-        """Get the number of (non-dedicated) GeoTIFF files associated with a project."""
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        """Get the number of (non-dedicated) data files associated with a project."""
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             return q.count()
 
     def tiles(self, project):
-        """Iterate over all (non-dedicated) GeoTIFF files assocaited with a project."""
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        """Iterate over all (non-dedicated) data files assocaited with a project."""
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             for assoc in q:
-                yield assoc.geotiff
+                yield assoc.datafile
 
-    def delete_all_tiffs(self):
-        """Remove all assocaited GeoTIFF files."""
-        with self._assoc_query(PolyTIFF) as q:
+    def delete_all_datafiles(self):
+        """Remove all assocaited data files."""
+        with self._assoc_query(PolyData) as q:
             q.delete()
 
     def delete_dedicated(self, project):
-        """Remove the dedicated GeoTIFF file associated with a project."""
+        """Remove the dedicated data file file associated with a project."""
         Database().delete_if(self.dedicated(project))
         self.maybe_delete_thumbnail(project)
 
     def delete_tiles(self, project):
-        """Remove the non-dedicated GeoTIFF files associated with a
+        """Remove the non-dedicated data file files associated with a
         project. This may not actually delete the files from disk, if
         they are associated with another polygon.
         """
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             q.delete()
         self.maybe_delete_thumbnail(project)
 
@@ -307,11 +307,11 @@ class Polygon(DeclarativeBase):
         assert x.shape == y.shape
         data = np.zeros(x.shape)
         if self.dedicated(project):
-            tiffs = [self.dedicated(project)]
+            datafiles = [self.dedicated(project)]
         else:
-            tiffs = list(self.tiles(project))
-        for tiff in tiffs:
-            tiff.interpolate(data, x, y)
+            datafiles = list(self.tiles(project))
+        for datafile in datafiles:
+            datafile.interpolate(data, x, y)
         return data
 
     def maybe_delete_thumbnail(self, project):
@@ -366,23 +366,35 @@ class Point(DeclarativeBase):
         return util.convert_latlon(np.array([self.x, self.y]), coords)
 
 
-class GeoTIFF(DeclarativeBase):
-    """ORM representation of a GeoTIFF file."""
-
-    __tablename__ = 'geotiff'
+class DataFile(DeclarativeBase):
+    __tablename__ = 'datafile'
 
     id = sql.Column(sql.Integer, primary_key=True)
     filename = sql.Column(sql.String, nullable=False)
+    discriminator = sql.Column('type', sql.String)
+
+    # Polygon intermediate association
+    assocs = orm.relationship(
+        'PolyData', back_populates='datafile', lazy='immediate',
+        cascade='save-update, merge, delete, delete-orphan',
+    )
+
+    __mapper_args__ = {'polymorphic_on': discriminator}
+
+@sql.event.listens_for(DataFile, 'after_delete')
+def delete_datafile(mapper, connection, datafile):
+    Path(datafile.filename).unlink()
+
+
+class GeoTIFF(DataFile):
+    """ORM representation of a GeoTIFF file."""
+
+    __mapper_args__ = {'polymorphic_identity': 'geotiff'}
+
     east = sql.Column(sql.Float, nullable=False)
     west = sql.Column(sql.Float, nullable=False)
     south = sql.Column(sql.Float, nullable=False)
     north = sql.Column(sql.Float, nullable=False)
-
-    # Polygon intermediate association
-    assocs = orm.relationship(
-        'PolyTIFF', back_populates='geotiff', lazy='immediate',
-        cascade='save-update, merge, delete, delete-orphan',
-    )
 
     @lru_cache(maxsize=1)
     def _dataset(self):
@@ -456,23 +468,19 @@ class GeoTIFF(DeclarativeBase):
             refdata[left+1, down+1] * ref_left       * ref_down
         )
 
-@sql.event.listens_for(GeoTIFF, 'after_delete')
-def delete_geotiff(mapper, connection, geotiff):
-    Path(geotiff.filename).unlink()
 
+class PolyData(DeclarativeBase):
+    """ORM intermediate association table between Polygons and data files."""
 
-class PolyTIFF(DeclarativeBase):
-    """ORM intermediate association table between Polygons and GeoTIFF objects."""
-
-    __tablename__ = 'polytiff'
+    __tablename__ = 'polydata'
 
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), primary_key=True)
-    geotiff_id = sql.Column(sql.Integer, sql.ForeignKey('geotiff.id'), primary_key=True)
+    datafile_id = sql.Column(sql.Integer, sql.ForeignKey('datafile.id'), primary_key=True)
     dedicated = sql.Column(sql.Boolean, nullable=False)
     project = sql.Column(sql.String, nullable=False)
 
     polygon = orm.relationship('Polygon', back_populates='assocs', lazy='immediate')
-    geotiff = orm.relationship('GeoTIFF', back_populates='assocs', lazy='immediate')
+    datafile = orm.relationship('DataFile', back_populates='assocs', lazy='immediate')
 
 
 class Job(DeclarativeBase):
@@ -530,14 +538,14 @@ class Job(DeclarativeBase):
                     f.write(filedata)
 
                 with Database().session() as s:
-                    geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
-                    if geotiff is None:
-                        geotiff = GeoTIFF(filename=str(filename))
-                        geotiff.populate()
-                        s.add(geotiff)
-                    s.add(PolyTIFF(
+                    datafile = s.query(DataFile).filter(DataFile.filename == str(filename)).one_or_none()
+                    if datafile is None:
+                        datafile = GeoTIFF(filename=str(filename))
+                        datafile.populate()
+                        s.add(datafile)
+                    s.add(PolyData(
                         polygon=self.polygon,
-                        geotiff=geotiff,
+                        datafile=datafile,
                         project=self.project,
                         dedicated=self.dedicated
                     ))
@@ -692,7 +700,7 @@ class Database(metaclass=util.SingletonMeta):
                 s.delete(point)
             for x, y in points:
                 s.add(Point(x=x, y=y, polygon=poly))
-            poly.delete_all_tiffs()
+            poly.delete_all_datafiles()
             poly.thumbnail = None
 
     def create(self, lfid, name, data):
