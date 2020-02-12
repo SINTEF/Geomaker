@@ -424,10 +424,17 @@ class JobDialog(QDialog):
                 return
             self.poly.delete_job(self.project, self.dedicated)
 
-        retval = self.poly.create_job(self.project, self.dedicated, self.ui.email.text())
-        if retval:
+        kwargs = {}
+        if self.project.supports_email:
+            kwargs['email'] = self.ui.email.text()
+        if self.project.supports_dedicated:
+            kwargs['dedicated'] = self.dedicated
+
+        retval = self.poly.create_job(self.project, **kwargs)
+        if isinstance(retval, str):
             QMessageBox.critical(self, 'Error', retval)
             return
+
         return super().done(QDialog.Accepted)
 
 

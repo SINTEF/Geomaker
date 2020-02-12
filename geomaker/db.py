@@ -15,7 +15,7 @@ import numpy as np
 import tifffile as tif
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import export, polyfit, projects, filesystem, util
+from . import export, polyfit, projects, filesystem, util, asynchronous
 from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
 
 import sqlalchemy as sql
@@ -203,38 +203,23 @@ class Polygon(DeclarativeBase):
         obj = self.job(project, dedicated)
         Database().delete_if(obj)
 
-    def create_job(self, project, dedicated, email):
+    def create_job(self, project, **kwargs):
         """Create a new job. This will fail if existing data files or
         jobs exist matching the given criteria.
         """
-        if dedicated:
-            assert self.dedicated(project) is None
-        else:
-            assert self.ntiles(project) == 0
+        if 'dedicated' in kwargs:
+            dedicated = kwargs['dedicated']
+            if dedicated:
+                assert self.dedicated(project) is None
+            else:
+                assert self.ntiles(project) == 0
         assert self.job(project, dedicated) is None
 
-        coords = list(self.geometry('utm33n'))
-        coords = [(int(x), int(y)) for x, y in coords]
-        coords = ';'.join(f'{x},{y}' for x, y in coords)
-        params = {
-            'CopyEmail': email,
-            'Projects': project.key,
-            'CoordInput': coords,
-            'ProjectMerge': 1 if dedicated else 0,
-            'InputWkid': 25833,      # ETRS89 / UTM zone 33N
-            'Format': 5,             # GeoTIFF,
-            'NHM': 1,                # National altitude models
-        }
+        retval = project.create_job(list(self.geometry()), **kwargs)
+        if not isinstance(retval, int):
+            return retval
 
-        code, response = util.make_request('startExport', params)
-        if response is None:
-            return f'HTTP code {code}'
-        elif 'Error'in response:
-            return response['Error']
-        elif not response.get('Success', False):
-            return 'Unknown error'
-
-        job = Job(polygon=self, project=project.key, dedicated=dedicated, jobid=response['JobID'])
+        job = Job(polygon=self, project=project.key, dedicated=kwargs.get('dedicated', False), jobid=retval)
         with Database().session() as s:
             s.add(job)
 
