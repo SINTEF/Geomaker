@@ -586,30 +586,18 @@ class Job(DeclarativeBase):
                 filename = filesystem.project_file(self.project, filename)
                 with open(filename, 'wb') as f:
                     f.write(filedata)
+                filenames.append(filename)
 
-                with Database().session() as s:
-                    datafile = s.query(DataFile).filter(DataFile.filename == str(filename)).one_or_none()
-                    if datafile is None:
-                        datafile = GeoTIFF(filename=str(filename))
-                        datafile.populate()
-                        s.add(datafile)
-                    s.add(PolyData(
-                        polygon=self.polygon,
-                        datafile=datafile,
-                        project=self.project,
-                        dedicated=self.dedicated
-                    ))
-
-        polygon = self.polygon
         with Database().session() as s:
             s.delete(self)
-        return polygon
+        return filenames
 
     def refresh(self):
         return PipeJob([
             Database().get_object(Job, self.id),
             Job._request_update(),
             ConditionalJob(Job._download_data()),
+            Polygon._assign_files(selfid=self.polygon_id, project=PROJECTS[self.project], dedicaed=self.dedicated),
             Polygon._update_thumbnail(project=self.project, dedicated=self.dedicated),
         ])
 
