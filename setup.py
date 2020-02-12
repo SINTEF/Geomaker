@@ -31,6 +31,7 @@ setup(
         'matplotlib',
         'numpy',
         'Pillow',
+        'pygeotile',
         'PyQt5',
         'PyQtWebEngine',
         'requests',

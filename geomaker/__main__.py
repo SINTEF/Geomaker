@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMessageBox, QProgressBar, QPushButton, QWidget,
 )
 
-from .asynchronous import ThreadManager, PipeJob, SequenceJob
+from .asynchronous import ThreadManager, PipeJob, SequenceJob, AbstractJob
 from .ui.utils import key_to_text, angle_to_degrees
 from .ui.models import ProjectsModel, DatabaseModel
 from .db import PROJECTS, Polygon, Database, Job
@@ -367,6 +367,8 @@ class JobDialog(QDialog):
         self.setFixedSize(self.size())
         self.project_changed()
 
+        self.retval = None
+
     @property
     def project(self):
         return PROJECTS.values()[self.ui.projectlist.selectedIndexes()[0].row()]
@@ -425,16 +427,21 @@ class JobDialog(QDialog):
             self.poly.delete_job(self.project, self.dedicated)
 
         kwargs = {}
-        if self.project.supports_email:
-            kwargs['email'] = self.ui.email.text()
         if self.project.supports_dedicated:
             kwargs['dedicated'] = self.dedicated
+        else:
+            kwargs['dedicated'] = False
+        if self.project.supports_email:
+            kwargs['email'] = self.ui.email.text()
+        if self.project.zoomlevels:
+            kwargs['zoom'] = self.ui.zoomslider.value()
 
         retval = self.poly.create_job(self.project, **kwargs)
         if isinstance(retval, str):
             QMessageBox.critical(self, 'Error', retval)
             return
 
+        self.retval = retval
         return super().done(QDialog.Accepted)
 
 
@@ -712,7 +719,10 @@ class GUI(Ui_MainWindow):
             return
         dialog = JobDialog(self.poly)
         retval = dialog.exec_()
+
         if retval == QDialog.Accepted:
+            if isinstance(dialog.retval, AbstractJob):
+                self.threadmanager.enqueue(dialog.retval, self.progress, priority='low')
             self.refresh_tabs_hint(dialog.project)
 
     # The signal handler for the 'export' button.

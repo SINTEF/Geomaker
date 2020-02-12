@@ -499,6 +499,8 @@ class Job(DeclarativeBase):
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
 
+    # TODO: The following methods should be moved to projects.py
+
     @staticmethod
     @async_job(message='Updating job', maximum='simple')
     def _request_update(self):

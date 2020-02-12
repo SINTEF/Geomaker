@@ -267,7 +267,7 @@ class WorkManager(QObject):
         self.received = True
 
 
-class Job:
+class AbstractJob:
     """Abstract base class for a job.
     Subclasses should implement process(manager, *args, **kwargs).
     """
@@ -276,7 +276,7 @@ class Job:
         return 1
 
 
-class SyncJob(Job):
+class SyncJob(AbstractJob):
     """A job that runs synchronously in the calling thread."""
 
     def __init__(self, func, message):
@@ -292,7 +292,7 @@ class SyncJob(Job):
         return retval
 
 
-class AsyncJob(Job):
+class AsyncJob(AbstractJob):
     """A job that runs asynchronously in the child thread.
     The wrapped function will receive the work manager object
     as the first argument and must report progress to it.
@@ -348,7 +348,7 @@ class AsyncJob(Job):
         return retval
 
 
-class SequenceJob(Job):
+class SequenceJob(AbstractJob):
     """A sequence of jobs executed in order."""
 
     def __init__(self, jobs):
@@ -363,7 +363,7 @@ class SequenceJob(Job):
         return None
 
 
-class ConditionalJob(Job):
+class ConditionalJob(AbstractJob):
 
     def __init__(self, job):
         self.job = job
