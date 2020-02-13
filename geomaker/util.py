@@ -90,9 +90,9 @@ def _find_border_tiles(a, b, lft, rgt, zoom, tileset, tol=1e-5):
     midpt = (a + b) / 2
     mid = _tile_at(midpt, zoom)
     tileset.add(mid)
-    if lft != mid or not _are_neighbors(lft, mid) or np.linalg.norm(a - midpt) < tol:
+    if lft != mid and not _are_neighbors(lft, mid) and np.linalg.norm(a - midpt) > tol:
         _find_border_tiles(a, midpt, lft, mid, zoom, tileset, tol=tol)
-    if rgt != mid or not _are_neighbors(rgt, mid) or np.linalg.norm(b - midpt) < tol:
+    if rgt != mid and not _are_neighbors(rgt, mid) and np.linalg.norm(b - midpt) > tol:
         _find_border_tiles(b, midpt, rgt, mid, zoom, tileset, tol=tol)
 
 
