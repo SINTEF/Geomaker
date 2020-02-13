@@ -89,5 +89,6 @@ class TiledImageModel(Project):
             with open(filename, 'wb') as f:
                 f.write(r.content)
             manager.increment_progress()
+            filenames.append(filename)
 
         return filenames
