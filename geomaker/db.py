@@ -354,6 +354,7 @@ class Polygon(DeclarativeBase):
     @staticmethod
     @async_job()
     def _update_thumbnail(self, project, dedicated, manager):
+        project = str(project)
         if self.thumbnail(project) is not None and not dedicated:
             return
         Database().delete_if(self.thumbnail(project))
