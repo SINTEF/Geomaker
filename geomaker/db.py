@@ -432,12 +432,23 @@ class GeoImage(DataFile):
 
     @property
     def tile_coords(self):
-        zoom, i, j = map(int, Path(self.filename).stem.split('-'))
+        return map(int, Path(self.filename).stem.split('-'))
 
     def populate(self):
         zoom, i, j = self.tile_coords
-        tile = PyGeoTile(i, j, zoom)
-        (self.south, self.west), (self.north, self.east) = tile.bounds
+        tile = PyGeoTile.from_google(i, j, zoom)
+
+        sw, ne = tile.bounds
+        south, west = sw.meters
+        north, east = ne.meters
+
+        rx = (east - west) / 256
+        ry = (north - south) / 256
+
+        self.south = south + rx/2
+        self.north = north - rx/2
+        self.west = east + ry/2
+        self.east = east - ry/2
 
 
 class GeoTIFF(DataFile):

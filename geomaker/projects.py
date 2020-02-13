@@ -67,7 +67,7 @@ class TiledImageModel(Project):
     datatype = 'geoimage'
 
     def __init__(self, key, name):
-        super().__init__(key, name, 'latlon')
+        super().__init__(key, name, 'spherical-mercator')
 
     def create_job(self, coords, zoom, dedicated):
         assert dedicated == False
