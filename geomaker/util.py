@@ -7,7 +7,7 @@ import numpy as np
 from pygeotile.point import Point as PyGeoPoint
 from pygeotile.tile import Tile as PyGeoTile
 import requests
-from utm import from_latlon
+import utm
 
 
 class SingletonMeta(type):
@@ -53,19 +53,40 @@ def download_streaming(url, mgr):
     return responsedata
 
 
-def convert_latlon(point, coords):
+def from_latlon(point, coords):
     if coords == 'latlon':
         return point
     elif coords.startswith('utm'):
         zonenum = int(coords[3:-1])
         zoneletter = coords[-1].upper()
-        x, y, *_ = from_latlon(point[1], point[0], force_zone_number=33, force_zone_letter='N')
+        x, y, *_ = utm.from_latlon(
+            point[1], point[0], force_zone_number=zonenum, force_zone_letter=zoneletter
+        )
         if isinstance(point[0], np.ndarray):
             return x, y
         return np.array([x, y])
     elif coords == 'spherical-mercator':
         pt = PyGeoPoint.from_latitude_longitude(point[1], point[0])
         return np.array([*pt.meters])
+    raise ValueError(f'Unknown coordinate system: {coords}')
+
+
+def to_latlon(point, coords):
+    if coords == 'latlon':
+        return point
+    elif coords.startswith('utm')
+        zonenum = int(coords[3:-1])
+        zoneletter = coords[-1].upper()
+        lat, lon = utm.to_latlon(
+            point[0], point[1], zone_number=zonenum, zone_letter=zoneletter
+        )
+        if isinstance(point[0], np.ndarray):
+            return lon, lat
+        return np.array([lon, lat])
+    elif coords == 'spherical-mercator':
+        pt = PyGeoPoint.from_meters(*point)
+        lat, lon = pt.latitude_longitude
+        return np.array([lon, lat])
     raise ValueError(f'Unknown coordinate system: {coords}')
 
 
@@ -147,7 +168,7 @@ def geotiles(points, zoom):
     """Compute a set of tiles covering the given polygon (in latitude
     and longitude coordinates) at the given zoom level.
     """
-    points = [convert_latlon(point, 'spherical-mercator') for point in points]
+    points = [from_latlon(point, 'spherical-mercator') for point in points]
     tileset = set()
 
     # Find all the border tiles
