@@ -31,12 +31,13 @@ class DigitalHeightModel(Project):
     supports_dedicated = True
     zoomlevels = None
     datatype = 'geotiff'
+    ndims = 1
 
     def __init__(self, key, name):
         super().__init__(key, name, 'utm33n')
 
     def create_job(self, coords, email, dedicated):
-        coords = [util.convert_latlon(xy, self.coords) for xy in coords]
+        coords = [util.from_latlon(xy, self.coords) for xy in coords]
         coords = ';'.join(f'{int(x)},{int(y)}' for x, y in coords)
         params = {
             'CopyEmail': email,
@@ -65,6 +66,7 @@ class TiledImageModel(Project):
     supports_dedicated = False
     zoomlevels = (2, 16)
     datatype = 'geoimage'
+    ndims = 3
 
     def __init__(self, key, name):
         super().__init__(key, name, 'spherical-mercator')

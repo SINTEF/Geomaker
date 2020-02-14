@@ -53,41 +53,49 @@ def download_streaming(url, mgr):
     return responsedata
 
 
+EARTH_RADIUS = 6378137.0
+ORIGIN_SHIFT = 2.0 * np.pi * EARTH_RADIUS / 2.0
+
+
 def from_latlon(point, coords):
     if coords == 'latlon':
-        return point
+        x, y = point
     elif coords.startswith('utm'):
         zonenum = int(coords[3:-1])
         zoneletter = coords[-1].upper()
         x, y, *_ = utm.from_latlon(
             point[1], point[0], force_zone_number=zonenum, force_zone_letter=zoneletter
         )
-        if isinstance(point[0], np.ndarray):
-            return x, y
-        return np.array([x, y])
     elif coords == 'spherical-mercator':
-        pt = PyGeoPoint.from_latitude_longitude(point[1], point[0])
-        return np.array([*pt.meters])
-    raise ValueError(f'Unknown coordinate system: {coords}')
+        lon, lat = point
+        x = lon * ORIGIN_SHIFT / 180
+        y = np.log(np.tan((90 + lat) * np.pi / 360)) / np.pi * ORIGIN_SHIFT
+    else:
+        raise ValueError(f'Unknown coordinate system: {coords}')
+    if isinstance(x, np.ndarray):
+        return x, y
+    return np.array([x, y])
 
 
 def to_latlon(point, coords):
     if coords == 'latlon':
-        return point
-    elif coords.startswith('utm')
+        lon, lat = point
+    elif coords.startswith('utm'):
         zonenum = int(coords[3:-1])
         zoneletter = coords[-1].upper()
         lat, lon = utm.to_latlon(
             point[0], point[1], zone_number=zonenum, zone_letter=zoneletter
         )
-        if isinstance(point[0], np.ndarray):
-            return lon, lat
-        return np.array([lon, lat])
     elif coords == 'spherical-mercator':
-        pt = PyGeoPoint.from_meters(*point)
-        lat, lon = pt.latitude_longitude
-        return np.array([lon, lat])
-    raise ValueError(f'Unknown coordinate system: {coords}')
+        x, y = point
+        lon = x / ORIGIN_SHIFT * 180
+        lat = y / ORIGIN_SHIFT * 180
+        lat = 180 / np.pi * (2 * np.arctan(np.exp(lat * np.pi / 180)) - np.pi / 2)
+    else:
+        raise ValueError(f'Unknown coordinate system: {coords}')
+    if isinstance(lon, np.ndarray):
+        return lon, lat
+    return np.array([lon, lat])
 
 
 def _tile_at(point, zoom):

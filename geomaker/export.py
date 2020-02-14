@@ -32,12 +32,16 @@ def list_colormaps():
 
 
 def array_to_image(data, fmt, cmap, filename):
-    maxval = np.max(data)
-    if maxval > 0:
-        data /= np.max(data)
-    data = getattr(colormap, cmap)(data, bytes=True)
+    if data.shape[-1] == 1:
+        maxval = np.max(data)
+        if maxval > 0:
+            data /= np.max(data)
+        data = getattr(colormap, cmap)(data[...,0], bytes=True)
+    else:
+        data = data.astype(np.uint8)
     if data.shape[-1] == 4 and fmt == 'jpeg':
         data = data[..., :3]
+    data = data[:,::-1,:].transpose((1,0,2))
     from PIL import Image
     image = Image.fromarray(data)
     image.save(str(filename), format=fmt.upper())
@@ -70,28 +74,27 @@ def export(polygon, project, manager, boundary_mode='exterior',
 
     manager.report_message('Generating geometry')
     if format in ('stl', 'vtk', 'vtu'):
-        x, y, tri = polygon.generate_triangulation(coords, resolution)
+        (in_x, in_y), (out_x, out_y), tri = polygon.generate_triangulation(
+            in_coords=project.coords, out_coords=coords, resolution=resolution,
+        )
     else:
-        x, y = polygon.generate_meshgrid(
-            boundary_mode, rotation_mode, coords,
-            resolution=resolution, maxpts=maxpts
+        (in_x, in_y), (out_x, out_y) = polygon.generate_meshgrid(
+            boundary_mode, rotation_mode, in_coords=project.coords,
+            out_coords=coords, resolution=resolution, maxpts=maxpts,
         )
     manager.increment_progress()
 
     if texture:
         manager.report_message('Generating texture coordinates')
-        left = np.min(x)
-        right = np.max(x)
-        down = np.min(y)
-        up = np.max(y)
-        uvcoords = np.stack([(x - left) / (right - left), (y - down) / (up - down)], axis=1)
+        left = np.min(out_x)
+        right = np.max(out_x)
+        down = np.min(out_y)
+        up = np.max(out_y)
+        uvcoords = np.stack([(out_x - left) / (right - left), (out_y - down) / (up - down)], axis=1)
         manager.increment_progress()
 
     manager.report_message('Generating data')
-    if image_mode:
-        data = polygon.interpolate(project, x, y)
-    else:
-        data = polygon.interpolate(project, y, x)
+    data = polygon.interpolate(project, in_x, in_y)
     if not zero_sea_level:
         data -= np.min(data)
     manager.increment_progress()
@@ -106,7 +109,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
     elif format == 'g2':
         from splipy import Surface, BSplineBasis
         from splipy.io import G2
-        cpts = np.stack([x, y, data], axis=2)
+        cpts = np.stack([out_x, out_y, data], axis=2)
         knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape]
         bases = [BSplineBasis(order=2, knots=kts) for kts in knots]
         srf = Surface(*bases, cpts, raw=True)
@@ -115,14 +118,14 @@ def export(polygon, project, manager, boundary_mode='exterior',
     elif format == 'stl':
         from stl.mesh import Mesh as STLMesh
         mesh = STLMesh(np.zeros(tri.shape[0], STLMesh.dtype))
-        mesh.vectors[:,:,0] = x[tri]
-        mesh.vectors[:,:,1] = y[tri]
+        mesh.vectors[:,:,0] = out_x[tri]
+        mesh.vectors[:,:,1] = out_y[tri]
         mesh.vectors[:,:,2] = data[tri]
         mesh.save(filename)
     elif format in ('vtk', 'vtu'):
         import vtk
         import vtk.util.numpy_support as vtknp
-        pointsarray = np.stack([x, y, data], axis=1)
+        pointsarray = np.stack([out_x, out_y, data[:,0]], axis=1)
         points = vtk.vtkPoints()
         points.SetData(vtknp.numpy_to_vtk(pointsarray))
 
