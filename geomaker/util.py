@@ -64,7 +64,7 @@ def convert_latlon(point, coords):
             return x, y
         return np.array([x, y])
     elif coords == 'spherical-mercator':
-        pt = PyGeoPoint(point[1], point[0])
+        pt = PyGeoPoint.from_latitude_longitude(point[1], point[0])
         return np.array([*pt.meters])
     raise ValueError(f'Unknown coordinate system: {coords}')
 
