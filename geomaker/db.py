@@ -1,4 +1,3 @@
-from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache, partial, wraps
 import hashlib
@@ -13,11 +12,13 @@ from area import area as geojson_area
 from bidict import bidict
 from indexed import IndexedOrderedDict
 import numpy as np
+from PIL import Image
+from pygeotile.tile import Tile as PyGeoTile
 import tifffile as tif
 from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
-from . import export, polyfit, filesystem, util
-from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob
+from . import export, polyfit, projects, filesystem, util, asynchronous
+from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob, AbstractJob
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -26,17 +27,14 @@ from sqlalchemy.ext.declarative import declarative_base
 DeclarativeBase = declarative_base()
 
 
-class Project(namedtuple('Project', ['key', 'name'])):
-    def __str__(self):
-        return self.key
-
 PROJECTS = IndexedOrderedDict([
-    ('DTM50', Project(key='DTM50', name='Terrain model (50 m)')),
-    ('DTM10', Project(key='DTM10', name='Terrain model (10 m)')),
-    ('DTM1',  Project(key='DTM1',  name='Terrain model (1 m)')),
-    ('DOM50', Project(key='DOM50', name='Object model (50 m)')),
-    ('DOM10', Project(key='DOM10', name='Object model (10 m)')),
-    ('DOM1',  Project(key='DOM1',  name='Object model (1 m)')),
+    ('DTM50', projects.DigitalHeightModel(key='DTM50', name='Terrain model (50 m)')),
+    ('DTM10', projects.DigitalHeightModel(key='DTM10', name='Terrain model (10 m)')),
+    ('DTM1',  projects.DigitalHeightModel(key='DTM1',  name='Terrain model (1 m)')),
+    ('DOM50', projects.DigitalHeightModel(key='DOM50', name='Object model (50 m)')),
+    ('DOM10', projects.DigitalHeightModel(key='DOM10', name='Object model (10 m)')),
+    ('DOM1',  projects.DigitalHeightModel(key='DOM1',  name='Object model (1 m)')),
+    ('NIB',   projects.TiledImageModel(key='NIB', name='Norge i bilder')),
 ])
 
 filesystem.create_directories(project.key for project in PROJECTS.values())
@@ -63,13 +61,13 @@ class Polygon(DeclarativeBase):
         cascade='save-update, merge, delete, delete-orphan',
     )
 
-    # GeoTIFF intermediate association
+    # Data file intermediate association
     assocs = orm.relationship(
-        'PolyTIFF', back_populates='polygon', lazy='immediate',
+        'PolyData', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
     )
 
-    # Pending jobs for acquiring new GeoTIFF files
+    # Pending jobs for acquiring new data files files
     jobs = orm.relationship(
         'Job', order_by='Job.jobid', back_populates='polygon', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan'
@@ -139,7 +137,7 @@ class Polygon(DeclarativeBase):
         """
         filters = [cls.polygon == self]
         for key, value in kwargs.items():
-            if isinstance(value, Project):
+            if isinstance(value, projects.Project):
                 value = value.key
             filters.append(getattr(cls, key) == value)
         with Database().session() as s:
@@ -157,39 +155,39 @@ class Polygon(DeclarativeBase):
         return self._single_assoc(Thumbnail, project=project)
 
     def dedicated(self, project):
-        """Get the dedicated GeoTIFF file associated with a project."""
-        obj = self._single_assoc(PolyTIFF, project=project, dedicated=True)
+        """Get the dedicated data file associated with a project."""
+        obj = self._single_assoc(PolyData, project=project, dedicated=True)
         if obj:
-            obj = obj.geotiff
+            obj = obj.datafile
         return obj
 
     def ntiles(self, project):
-        """Get the number of (non-dedicated) GeoTIFF files associated with a project."""
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        """Get the number of (non-dedicated) data files associated with a project."""
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             return q.count()
 
     def tiles(self, project):
-        """Iterate over all (non-dedicated) GeoTIFF files assocaited with a project."""
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        """Iterate over all (non-dedicated) data files assocaited with a project."""
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             for assoc in q:
-                yield assoc.geotiff
+                yield assoc.datafile
 
-    def delete_all_tiffs(self):
-        """Remove all assocaited GeoTIFF files."""
-        with self._assoc_query(PolyTIFF) as q:
+    def delete_all_datafiles(self):
+        """Remove all assocaited data files."""
+        with self._assoc_query(PolyData) as q:
             q.delete()
 
     def delete_dedicated(self, project):
-        """Remove the dedicated GeoTIFF file associated with a project."""
+        """Remove the dedicated data file file associated with a project."""
         Database().delete_if(self.dedicated(project))
         self.maybe_delete_thumbnail(project)
 
     def delete_tiles(self, project):
-        """Remove the non-dedicated GeoTIFF files associated with a
+        """Remove the non-dedicated data file files associated with a
         project. This may not actually delete the files from disk, if
         they are associated with another polygon.
         """
-        with self._assoc_query(PolyTIFF, project=project, dedicated=False) as q:
+        with self._assoc_query(PolyData, project=project, dedicated=False) as q:
             q.delete()
         self.maybe_delete_thumbnail(project)
 
@@ -207,46 +205,62 @@ class Polygon(DeclarativeBase):
         obj = self.job(project, dedicated)
         Database().delete_if(obj)
 
-    def create_job(self, project, dedicated, email):
+    def create_job(self, project, **kwargs):
         """Create a new job. This will fail if existing data files or
         jobs exist matching the given criteria.
         """
-        if dedicated:
-            assert self.dedicated(project) is None
-        else:
-            assert self.ntiles(project) == 0
+        if 'dedicated' in kwargs:
+            dedicated = kwargs['dedicated']
+            if dedicated:
+                assert self.dedicated(project) is None
+            else:
+                assert self.ntiles(project) == 0
         assert self.job(project, dedicated) is None
 
-        coords = list(self.geometry('utm33n'))
-        coords = [(int(x), int(y)) for x, y in coords]
-        coords = ';'.join(f'{x},{y}' for x, y in coords)
-        params = {
-            'CopyEmail': email,
-            'Projects': project.key,
-            'CoordInput': coords,
-            'ProjectMerge': 1 if dedicated else 0,
-            'InputWkid': 25833,      # ETRS89 / UTM zone 33N
-            'Format': 5,             # GeoTIFF,
-            'NHM': 1,                # National altitude models
-        }
+        retval = project.create_job(list(self.geometry()), **kwargs)
+        if isinstance(retval, AbstractJob):
+            return PipeJob([
+                retval,
+                Polygon._assign_files(selfid=self.id, dedicated=kwargs.get('dedicated', False), project=project),
+                Polygon._update_thumbnail(project=project, dedicated=dedicated),
+            ])
 
-        code, response = util.make_request('startExport', params)
-        if response is None:
-            return f'HTTP code {code}'
-        elif 'Error'in response:
-            return response['Error']
-        elif not response.get('Success', False):
-            return 'Unknown error'
+        if not isinstance(retval, int):
+            return retval
 
-        job = Job(polygon=self, project=project.key, dedicated=dedicated, jobid=response['JobID'])
+        job = Job(polygon=self, project=project.key, dedicated=kwargs.get('dedicated', False), jobid=retval)
         with Database().session() as s:
             s.add(job)
+
+    @staticmethod
+    @async_job(maximum='empty')
+    def _assign_files(filenames, selfid, dedicated, project):
+        with Database().session() as s:
+            self = s.query(Polygon).get(selfid)
+
+        for filename in filenames:
+            with Database().session() as s:
+                datafile = s.query(DataFile).filter(DataFile.filename == str(filename)).one_or_none()
+                if datafile is None:
+                    datafile = {'geoimage': GeoImage, 'geotiff': GeoTIFF}[project.datatype]()
+                    datafile.filename = str(filename)
+                    datafile.coords = project.coords
+                    datafile.populate()
+                    s.add(datafile)
+                s.add(PolyData(
+                    polygon=self,
+                    datafile=datafile,
+                    project=project.key,
+                    dedicated=dedicated
+                ))
+
+        return self
 
     def geographic_angle(self, coords):
         points = list(self.geometry())
         center = sum(points) / len(points)
-        up = util.convert_latlon(center + (0.1, 0.0), coords)
-        vec = up - util.convert_latlon(center, coords)
+        up = util.from_latlon(center + (0.1, 0.0), coords)
+        vec = up - util.from_latlon(center, coords)
         return -np.arctan2(vec[1], vec[0])
 
     def _rectangularize(self, mode, rotate, coords):
@@ -276,61 +290,60 @@ class Polygon(DeclarativeBase):
         _, actual_area, theta = self._rectangularize(mode, rotate, coords)
         return abs(actual_area - reference_area) / reference_area, theta
 
-    def generate_meshgrid(self, mode, rotate, coords, resolution=None, maxpts=None):
+    def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None):
         # Establish the corner points in the target coordinate system,
         # so that we can compute the resolution in each direction
         if mode == 'actual':
             assert self.npts == 4
-            a, b, c, d, _ = self.geometry(coords)
+            a, b, c, d, _ = self.geometry(out_coords)
         else:
-            (a, b, c, d, _), _, _ = self._rectangularize(mode, rotate, coords)
+            (a, d, c, b, _), _, _ = self._rectangularize(mode, rotate, out_coords)
 
         # Compute parametric arrays in x and y with the correct lengths
-        width = np.linalg.norm(b - a)
-        height = np.linalg.norm(c - b)
+        width = np.linalg.norm(c - b)
+        height = np.linalg.norm(b - a)
         if resolution is None:
             resolution = max(width, height) / maxpts
-        nx = int(ceil(height / resolution))
-        ny = int(ceil(width / resolution))
+        nx = int(ceil(width / resolution))
+        ny = int(ceil(height / resolution))
         xt, yt = np.meshgrid(np.linspace(0, 1, nx), np.linspace(0, 1, ny), indexing='ij')
 
-        # In 'actual' coordinates, the output is x from west to east, y from south to north.
-        # Therefore we permute the corner points here.
-        # TODO: This also assumes that the vertices are ordered in a specific way!
-        if mode == 'actual':
-            d, c, b, a, _ = self.geometry()
+        # Assemble x and y arrays in target geometry
+        out_x = (1-xt) * (1-yt) * a[0] + xt * (1-yt) * d[0] + xt * yt * c[0] + (1-xt) * yt * b[0]
+        out_y = (1-xt) * (1-yt) * a[1] + xt * (1-yt) * d[1] + xt * yt * c[1] + (1-xt) * yt * b[1]
 
-        # Assemble x and y arrays in target geometry with image-style coordinates
-        # (x goes from north to south, y from west to east)
-        x = (1-xt) * (1-yt) * d[1] + xt * (1-yt) * a[1] + xt * yt * b[1] + (1-xt) * yt * c[1]
-        y = (1-xt) * (1-yt) * d[0] + xt * (1-yt) * a[0] + xt * yt * b[0] + (1-xt) * yt * c[0]
+        # Convert to input coordinates
+        in_x, in_y = util.to_latlon((out_x, out_y), out_coords)
+        in_x, in_y = util.from_latlon((in_x, in_y), in_coords)
 
-        # In 'actual' mode, convert to target coordinates and swap the axes
-        if mode == 'actual':
-            x, y = util.convert_latlon((y, x), coords)
+        return (in_x, in_y), (out_x, out_y)
 
-        return x, y
-
-    def generate_triangulation(self, coords, resolution):
-        a, b, c, d, _ = self.geometry(coords)
+    def generate_triangulation(self, in_coords, out_coords, resolution):
+        a, b, c, d, _ = self.geometry(out_coords)
         outpts, outelems = export.triangulate(
             np.array([a, b, c, d]),
             np.array([(0, 3), (3, 2), (2, 1), (1, 0)]),
             max_area=resolution**2/2,
         )
-        x = np.array([pt[0] for pt in outpts])
-        y = np.array([pt[1] for pt in outpts])
-        return x, y, outelems
+        out_x = np.array([pt[0] for pt in outpts])
+        out_y = np.array([pt[1] for pt in outpts])
+
+        # Convert to input coordinates
+        in_x, in_y = util.to_latlon((out_x, out_y), out_coords)
+        in_x, in_y = util.from_latlon((in_x, in_y), in_coords)
+
+        return (in_x, in_y), (out_x, out_y), outelems
 
     def interpolate(self, project, x, y):
         assert x.shape == y.shape
-        data = np.zeros(x.shape)
+        data = np.zeros(x.shape + (project.ndims,))
+        mask = np.zeros(x.shape, dtype=np.uint8)
         if self.dedicated(project):
-            tiffs = [self.dedicated(project)]
+            datafiles = [self.dedicated(project)]
         else:
-            tiffs = list(self.tiles(project))
-        for tiff in tiffs:
-            tiff.interpolate(data, x, y)
+            datafiles = list(self.tiles(project))
+        for datafile in datafiles:
+            datafile.interpolate(data, mask, x, y)
         return data
 
     def maybe_delete_thumbnail(self, project):
@@ -341,13 +354,13 @@ class Polygon(DeclarativeBase):
     @staticmethod
     @async_job()
     def _update_thumbnail(self, project, dedicated, manager):
-        if self.thumbnail(project) is not None and not dedicated:
+        if self.thumbnail(project.key) is not None and not dedicated:
             return
-        Database().delete_if(self.thumbnail(project))
+        Database().delete_if(self.thumbnail(project.key))
         filename = export.export(self, project, manager, maxpts=640, directory=filesystem.THUMBNAIL_ROOT)
 
         # Create a new Thumbnail object in the database
-        thumb = Thumbnail(filename=str(filename), project=project, polygon=self)
+        thumb = Thumbnail(filename=str(filename), project=project.key, polygon=self)
         with Database().session() as s:
             s.add(thumb)
 
@@ -367,7 +380,10 @@ class Thumbnail(DeclarativeBase):
 
 @sql.event.listens_for(Thumbnail, 'after_delete')
 def delete_thumbnail(mapper, connection, thumbnail):
-    Path(thumbnail.filename).unlink()
+    try:
+        Path(thumbnail.filename).unlink()
+    except FileNotFoundError:
+        pass
 
 
 class Point(DeclarativeBase):
@@ -382,16 +398,17 @@ class Point(DeclarativeBase):
     polygon = orm.relationship('Polygon', back_populates='points', lazy='immediate')
 
     def in_coords(self, coords):
-        return util.convert_latlon(np.array([self.x, self.y]), coords)
+        return util.from_latlon(np.array([self.x, self.y]), coords)
 
 
-class GeoTIFF(DeclarativeBase):
-    """ORM representation of a GeoTIFF file."""
-
-    __tablename__ = 'geotiff'
+class DataFile(DeclarativeBase):
+    __tablename__ = 'datafile'
 
     id = sql.Column(sql.Integer, primary_key=True)
     filename = sql.Column(sql.String, nullable=False)
+    discriminator = sql.Column('type', sql.String)
+
+    coords = sql.Column(sql.String, nullable=False)
     east = sql.Column(sql.Float, nullable=False)
     west = sql.Column(sql.Float, nullable=False)
     south = sql.Column(sql.Float, nullable=False)
@@ -399,9 +416,99 @@ class GeoTIFF(DeclarativeBase):
 
     # Polygon intermediate association
     assocs = orm.relationship(
-        'PolyTIFF', back_populates='geotiff', lazy='immediate',
+        'PolyData', back_populates='datafile', lazy='immediate',
         cascade='save-update, merge, delete, delete-orphan',
     )
+
+    __mapper_args__ = {'polymorphic_on': discriminator}
+
+    def interpolate(self, data, mask, x, y):
+        SW, SE, NE, NW = 1, 2, 4, 8
+        rx, ry = self.resolution
+        w, e, s, n = self.west, self.east, self.south, self.north
+        refdata = self.as_array()
+
+        # SW
+        m = np.where((w <= x) & (x < e + rx) & (s <= y) & (y < n + ry) & (np.bitwise_and(mask, SW) == 0))
+        xl = (x[m] - w)/rx
+        yl = (y[m] - s)/ry
+        il = np.floor(xl).astype(int)
+        jl = np.floor(yl).astype(int)
+        data[m] += refdata[il, jl] * ((1 - (xl - il)) * (1 - (yl - jl)))[:, np.newaxis]
+        mask[m] = np.bitwise_or(mask[m], SW)
+
+        # SE
+        m = np.where((w - rx <= x) & (x < e) & (s <= y) & (y < n + ry) & (np.bitwise_and(mask, SE) == 0))
+        xl = (x[m] - w)/rx
+        yl = (y[m] - s)/ry
+        il = np.floor(xl).astype(int)
+        jl = np.floor(yl).astype(int)
+        data[m] += refdata[il+1, jl] * ((xl - il) * (1 - (yl - jl)))[:, np.newaxis]
+        mask[m] = np.bitwise_or(mask[m], SE)
+
+        # NE
+        m = np.where((w - rx <= x) & (x < e) & (s - ry <= y) & (y < n) & (np.bitwise_and(mask, NE) == 0))
+        xl = (x[m] - w)/rx
+        yl = (y[m] - s)/ry
+        il = np.floor(xl).astype(int)
+        jl = np.floor(yl).astype(int)
+        data[m] += refdata[il+1, jl+1] * ((xl - il) * (yl - jl))[:, np.newaxis]
+        mask[m] = np.bitwise_or(mask[m], NE)
+
+        # NW
+        m = np.where((w <= x) & (x < e + rx) & (s - ry <= y) & (y < n) & (np.bitwise_and(mask, NW) == 0))
+        xl = (x[m] - w)/rx
+        yl = (y[m] - s)/ry
+        il = np.floor(xl).astype(int)
+        jl = np.floor(yl).astype(int)
+        data[m] += refdata[il, jl+1] * ((1 - (xl - il)) * (yl - jl))[:, np.newaxis]
+        mask[m] = np.bitwise_or(mask[m], NW)
+
+@sql.event.listens_for(DataFile, 'after_delete')
+def delete_datafile(mapper, connection, datafile):
+    Path(datafile.filename).unlink()
+
+
+class GeoImage(DataFile):
+    """ORM representation of a Google maps style iamge tile."""
+
+    __mapper_args__ = {'polymorphic_identity': 'geoimage'}
+
+    def as_array(self):
+        raw = np.array(Image.open(self.filename))
+        return raw.transpose((1,0,2))[:,::-1,:]
+
+    @property
+    def tile_coords(self):
+        return map(int, Path(self.filename).stem.split('-'))
+
+    @property
+    def resolution(self):
+        rx = (self.east - self.west) / 255
+        ry = (self.north - self.south) / 255
+        return rx, ry
+
+    def populate(self):
+        zoom, i, j = self.tile_coords
+        tile = PyGeoTile.from_google(i, j, zoom)
+
+        sw, ne = tile.bounds
+        west, south = sw.meters
+        east, north = ne.meters
+
+        rx = (east - west) / 256
+        ry = (north - south) / 256
+
+        self.south = south + ry/2
+        self.north = north - ry/2
+        self.west = west + rx/2
+        self.east = east - rx/2
+
+
+class GeoTIFF(DataFile):
+    """ORM representation of a GeoTIFF file."""
+
+    __mapper_args__ = {'polymorphic_identity': 'geotiff'}
 
     @lru_cache(maxsize=1)
     def _dataset(self):
@@ -411,11 +518,11 @@ class GeoTIFF(DeclarativeBase):
     @lru_cache(maxsize=1)
     def as_array(self):
         """Cached data array object."""
-        return self._dataset().asarray()
+        return self._dataset().asarray().T[:, ::-1, np.newaxis]
 
     @property
     def shape(self):
-        return self.as_array().shape
+        return self.as_array().shape[:2]
 
     @property
     def resolution(self):
@@ -436,62 +543,19 @@ class GeoTIFF(DeclarativeBase):
         self.north = y - 0.5 * ry
         self.south = self.north - ry * (nx - 1)
 
-    def interpolate(self, data, x, y):
-        """Interpolate onto a data array. 'Data', 'x' and 'y' should
-        be 2D arrays with the same shape. For all points where x and y
-        fit in the bounding box of this GeoTIFF file, the elements of
-        'data' are modified by bilinear interpolation.
 
-        The values of 'data' are only increased, never decreased. This
-        to facilitate several overlapping GeoTIFF files where missing
-        height values may be encoded as large negative values. For
-        best results, the data array should be initialized with zeros
-        or suitably negative values.
-        """
-        rx, ry = self.resolution
+class PolyData(DeclarativeBase):
+    """ORM intermediate association table between Polygons and data files."""
 
-        # Mask of which indices apply to this TIFF
-        M = np.where((self.south <= x) & (x < self.north) & (self.west <= y) & (y < self.east))
-        x = (self.north - x[M]) / rx
-        y = (y[M] - self.west) / ry
-
-        # Compute indices of the element for each point
-        left = np.floor(x).astype(int)
-        down = np.floor(y).astype(int)
-
-        # Reference coordinates for each point
-        ref_left = x - left
-        ref_down = y - down
-
-        # Interpolate
-        refdata = self.as_array()
-        refdata[np.where(refdata < 0)] = 0
-
-        data[M] = np.maximum(
-            data[M],
-            refdata[left,   down]   * (1 - ref_left) * (1 - ref_down) +
-            refdata[left+1, down]   * ref_left       * (1 - ref_down) +
-            refdata[left,   down+1] * (1 - ref_left) * ref_down +
-            refdata[left+1, down+1] * ref_left       * ref_down
-        )
-
-@sql.event.listens_for(GeoTIFF, 'after_delete')
-def delete_geotiff(mapper, connection, geotiff):
-    Path(geotiff.filename).unlink()
-
-
-class PolyTIFF(DeclarativeBase):
-    """ORM intermediate association table between Polygons and GeoTIFF objects."""
-
-    __tablename__ = 'polytiff'
+    __tablename__ = 'polydata'
 
     polygon_id = sql.Column(sql.Integer, sql.ForeignKey('polygon.id'), primary_key=True)
-    geotiff_id = sql.Column(sql.Integer, sql.ForeignKey('geotiff.id'), primary_key=True)
+    datafile_id = sql.Column(sql.Integer, sql.ForeignKey('datafile.id'), primary_key=True)
     dedicated = sql.Column(sql.Boolean, nullable=False)
     project = sql.Column(sql.String, nullable=False)
 
     polygon = orm.relationship('Polygon', back_populates='assocs', lazy='immediate')
-    geotiff = orm.relationship('GeoTIFF', back_populates='assocs', lazy='immediate')
+    datafile = orm.relationship('DataFile', back_populates='assocs', lazy='immediate')
 
 
 class Job(DeclarativeBase):
@@ -509,6 +573,8 @@ class Job(DeclarativeBase):
     url = sql.Column(sql.String, nullable=True)
 
     polygon = orm.relationship('Polygon', back_populates='jobs', lazy='immediate')
+
+    # TODO: The following methods should be moved to projects.py
 
     @staticmethod
     @async_job(message='Updating job', maximum='simple')
@@ -547,31 +613,19 @@ class Job(DeclarativeBase):
                 filename = filesystem.project_file(self.project, filename)
                 with open(filename, 'wb') as f:
                     f.write(filedata)
+                filenames.append(filename)
 
-                with Database().session() as s:
-                    geotiff = s.query(GeoTIFF).filter(GeoTIFF.filename == str(filename)).one_or_none()
-                    if geotiff is None:
-                        geotiff = GeoTIFF(filename=str(filename))
-                        geotiff.populate()
-                        s.add(geotiff)
-                    s.add(PolyTIFF(
-                        polygon=self.polygon,
-                        geotiff=geotiff,
-                        project=self.project,
-                        dedicated=self.dedicated
-                    ))
-
-        polygon = self.polygon
         with Database().session() as s:
             s.delete(self)
-        return polygon
+        return filenames
 
     def refresh(self):
         return PipeJob([
             Database().get_object(Job, self.id),
             Job._request_update(),
             ConditionalJob(Job._download_data()),
-            Polygon._update_thumbnail(project=self.project, dedicated=self.dedicated),
+            Polygon._assign_files(selfid=self.polygon_id, project=PROJECTS[self.project], dedicated=self.dedicated),
+            Polygon._update_thumbnail(project=PROJECTS[self.project], dedicated=self.dedicated),
         ])
 
 
@@ -711,7 +765,7 @@ class Database(metaclass=util.SingletonMeta):
                 s.delete(point)
             for x, y in points:
                 s.add(Point(x=x, y=y, polygon=poly))
-            poly.delete_all_tiffs()
+            poly.delete_all_datafiles()
             poly.thumbnail = None
 
     def create(self, lfid, name, data):
