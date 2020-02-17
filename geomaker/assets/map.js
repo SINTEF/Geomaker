@@ -43,6 +43,10 @@ function focus_object(lfid) {
     }
 }
 
+function remove_object(lfid) {
+    drawnItems.removeLayer(lfid);
+}
+
 function initialize() {
     // Actual map object with drawn items
     map = new L.Map('map', {

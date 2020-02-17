@@ -687,6 +687,8 @@ class GUI(Ui_MainWindow):
         if accept:
             Database().create(lfid, name, data)
             self.webview_selection_changed(lfid)
+        else:
+            self.js(f'remove_object({lfid})')
 
     def webview_polygon_edited(self, lfid, data):
         Database().update_points(lfid, data)
