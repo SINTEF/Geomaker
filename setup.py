@@ -13,7 +13,10 @@ setup(
     url='https://github.com/TheBB/geomaker',
     packages=find_packages(),
     package_data={
-        'geomaker': ['assets/map.html', 'assets/map.js'],
+        'geomaker': [
+            'assets/map.html', 'assets/map.js',
+            'alembic.ini', 'migrations/env.py', 'migrations/versions/*.py',
+        ],
     },
     entry_points={
         'console_scripts': ['geomaker=geomaker.__main__:main'],
@@ -24,6 +27,7 @@ setup(
         'VTK': ['vtk'],
     },
     install_requires=[
+        'alembic',
         'area',
         'bidict',
         'indexed.py',
