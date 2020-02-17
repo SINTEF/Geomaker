@@ -3,9 +3,10 @@ from inspect import signature
 from threading import get_ident
 from time import sleep
 import traceback
+import sys
 
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
-from PyQt5.QtWidgets import QProgressDialog, QProgressBar
+from PyQt5.QtWidgets import QProgressDialog, QProgressBar, QMessageBox
 
 
 class ThreadAbortedException(BaseException):
@@ -90,6 +91,7 @@ class ThreadManager(QObject):
         worker.message_changed.connect(reporter.set_message)
         worker.finished.connect(reporter.finished)
         worker.finished.connect(self.finished)
+        worker.errored.connect(self.errored)
 
         # Prevent undue garbage collection!
         self._thread = thread
@@ -119,6 +121,12 @@ class ThreadManager(QObject):
             traceback.print_exc()
             retval = None
         self._worker.respond_synchronously(retval)
+
+    @pyqtSlot(object)
+    def errored(self, info):
+        traceback.print_exception(*info)
+        _, exception, _ = info
+        QMessageBox.critical(self._parent, 'Error', str(exception))
 
     @pyqtSlot(object)
     def finished(self, result):
@@ -167,6 +175,9 @@ class WorkManager(QObject):
     # Signalled when work has been completed
     finished = pyqtSignal(object)
 
+    # Signalled when work finished with an error before completion
+    errored = pyqtSignal(object)
+
     # Signalled when a function must be executed synchronously,
     # in the calling thread. If nothing listens to this signal,
     # the thread will stall upon such jobs.
@@ -210,6 +221,8 @@ class WorkManager(QObject):
             self.finished.emit(result)
         except ThreadAbortedException:
             pass
+        except:
+            self.errored.emit(sys.exc_info())
         from .db import Database
         Database().remove_session()
 
@@ -336,14 +349,10 @@ class AsyncJob(AbstractJob):
 
     def process(self, manager, *args, **kwargs):
         self.pre_process(manager)
-        try:
-            if self.maximum in ('empty', 'simple'):
-                retval = self.func(*args, **kwargs)
-            else:
-                retval = self.func(*args, **kwargs, manager=manager)
-        except Exception:
-            traceback.print_exc()
-            retval = None
+        if self.maximum in ('empty', 'simple'):
+            retval = self.func(*args, **kwargs)
+        else:
+            retval = self.func(*args, **kwargs, manager=manager)
         self.post_process(manager)
         return retval
 
