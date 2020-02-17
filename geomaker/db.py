@@ -6,6 +6,7 @@ import json
 from math import ceil
 from operator import methodcaller
 from pathlib import Path
+import sys
 from zipfile import ZipFile
 
 from area import area as geojson_area
@@ -19,6 +20,11 @@ from xdg import XDG_DATA_HOME, XDG_CONFIG_HOME
 
 from . import export, polyfit, projects, filesystem, util, asynchronous
 from .asynchronous import async_job, sync_job, PipeJob, ConditionalJob, AbstractJob
+
+from alembic.script import ScriptDirectory
+from alembic.migration import MigrationContext
+from alembic.config import Config as AlembicCfg
+from alembic import command as alembic_command
 
 import sqlalchemy as sql
 import sqlalchemy.orm as orm
@@ -635,8 +641,34 @@ class Database(metaclass=util.SingletonMeta):
     """
 
     def __init__(self):
-        self.engine = sql.create_engine(f'sqlite:///{filesystem.DATA_ROOT}/db.sqlite3')
-        DeclarativeBase.metadata.create_all(self.engine)
+        sql_url = f'sqlite:///{filesystem.database_file()}'
+        self.engine = sql.create_engine(sql_url)
+
+        # Find the current alembic revision
+        with self.engine.connect() as conn:
+            ctx = MigrationContext.configure(conn)
+            current_revision = ctx.get_current_revision()
+
+        # Find the head alembic revision
+        cfg = AlembicCfg(Path(__file__).parent / 'alembic.ini')
+        cfg.set_main_option('script_location', str(Path(__file__).parent / 'migrations'))
+        cfg.set_main_option('sqlalchemy.url', sql_url)
+        current_head = ScriptDirectory.from_config(cfg).as_revision_number('head')
+
+        # Upgrade to the first revision manually, to accommodate
+        # possibly pre-existing databases
+        FIRST_REVISION = 'ee8fca468df0'
+        if current_revision is None and current_head == FIRST_REVISION:
+            DeclarativeBase.metadata.create_all(self.engine)
+            alembic_command.stamp(cfg, FIRST_REVISION)
+            current_revision = FIRST_REVISION
+        elif current_revision is None:
+            print('The current database is too old to be automatically updated.', file=sys.stderr)
+            print(f'Please delete {filesystem.database_file()} before restarting.', file=sys.stderr)
+            sys.exit(1)
+
+        # Upgrade to the newest revision automatically
+        alembic_command.upgrade(cfg, 'head')
 
         # The session object lasts for the lifetime of one thread
         self._session = orm.scoped_session(orm.sessionmaker(bind=self.engine))

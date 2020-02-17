@@ -45,6 +45,7 @@ automatically tracks the repository contents.
 The following packages are either simple Python-only packages or have
 well-established compiled wheels for download:
 
+- alembic (for migrating database revision)
 - area (for calculating areas in spherical coordinate systems)
 - bidict (bidirectional dictionaries)
 - matplotlib (for color maps)

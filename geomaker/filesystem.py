@@ -32,6 +32,10 @@ def thumbnail_file(filename):
     return THUMBNAIL_ROOT / filename
 
 
+def database_file():
+    return DATA_ROOT / 'db.sqlite3'
+
+
 class TomlFile(dict, metaclass=SingletonMeta):
     """Singleton TOML file mapped as a dict."""
 
