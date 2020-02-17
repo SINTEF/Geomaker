@@ -37,7 +37,7 @@ def make_request(endpoint, params):
 def download_streaming(url, mgr):
     response = requests.get(url, stream=True)
     if response.status_code != 200:
-        return None
+        raise Exception(f'HTTP Code {response.status_code}: {response.text}')
     nbytes = int(response.headers['Content-Length'])
     mgr.report_max(nbytes)
     responsedata = BytesIO()
