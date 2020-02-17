@@ -645,6 +645,7 @@ class Ui_MainWindow(object):
         self.exportbtn.setText(_translate("MainWindow", "Export"))
         self.downloadbtn.setText(_translate("MainWindow", "Download"))
         self.refreshbtn.setText(_translate("MainWindow", "Refresh"))
+        self.refreshbtn.setShortcut(_translate("MainWindow", "F5"))
         self.polydetails.setTitle(_translate("MainWindow", "GroupBox"))
         self.label.setText(_translate("MainWindow", "West"))
         self.west.setText(_translate("MainWindow", "TextLabel"))

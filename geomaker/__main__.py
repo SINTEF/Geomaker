@@ -491,8 +491,9 @@ class KeyFilter(QObject):
         if not isinstance(event, QKeyEvent) or event.type() != QEvent.KeyPress:
             return super().eventFilter(obj, event)
         text = key_to_text(event)
-        if text == '<f5>':
-            self.ui.update_jobs()
+        if text == 'DEL':
+            self.ui.delete_current_polygon()
+            return False
         else:
             return super().eventFilter(obj, event)
         return True
@@ -696,6 +697,12 @@ class GUI(Ui_MainWindow):
 
     def webview_polygon_deleted(self, lfid):
         Database().delete(lfid)
+
+    def delete_current_polygon(self):
+        if self.poly:
+            lfid = self.poly.lfid
+            Database().delete(lfid)
+            self.js(f'remove_object({lfid})')
 
     # A region has been selected: re-color the map view by running the
     # select_object javascript function, and update the 'poly'
