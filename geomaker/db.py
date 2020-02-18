@@ -626,7 +626,7 @@ class Job(DeclarativeBase):
             for path in tifpaths:
                 filedata = z.read(path)
                 if self.dedicated:
-                    filename = hashlib.sha256(data).hexdigest() + '.tiff'
+                    filename = hashlib.sha256(filedata).hexdigest() + '.tiff'
                 else:
                     filename = Path(path).stem.split('_', 1)[-1] + '.tiff'
                 filename = filesystem.project_file(self.project, filename)
