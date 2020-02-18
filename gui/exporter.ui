@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>793</width>
-    <height>418</height>
+    <height>458</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -52,6 +52,9 @@
            <property name="bottomMargin">
             <number>0</number>
            </property>
+           <property name="verticalSpacing">
+            <number>6</number>
+           </property>
            <item row="1" column="1">
             <widget class="QComboBox" name="filename">
              <property name="sizePolicy">
@@ -92,12 +95,12 @@
              </property>
             </widget>
            </item>
-           <item row="13" column="0" colspan="3">
+           <item row="14" column="0" colspan="3">
             <widget class="QWidget" name="widget_3" native="true">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
                <horstretch>0</horstretch>
-               <verstretch>1</verstretch>
+               <verstretch>0</verstretch>
               </sizepolicy>
              </property>
              <layout class="QHBoxLayout" name="horizontalLayout">
@@ -1583,7 +1586,7 @@
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_2">
                  <property name="spacing">
-                  <number>0</number>
+                  <number>6</number>
                  </property>
                  <property name="leftMargin">
                   <number>0</number>
@@ -1631,7 +1634,7 @@
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout">
                  <property name="spacing">
-                  <number>0</number>
+                  <number>6</number>
                  </property>
                  <property name="leftMargin">
                   <number>0</number>
@@ -1688,6 +1691,16 @@
             <widget class="QCheckBox" name="invertmap">
              <property name="text">
               <string>Invert color map</string>
+             </property>
+            </widget>
+           </item>
+           <item row="13" column="0" colspan="3">
+            <widget class="QWidget" name="widget_8" native="true">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>1</verstretch>
+              </sizepolicy>
              </property>
             </widget>
            </item>
