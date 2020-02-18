@@ -77,8 +77,8 @@ class ExporterDialog(QDialog):
         ('jpeg', {'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
         ('g2', {'g2'}, 'GoTools B-Splines (G2)'),
         ('stl', {'stl'}, 'Stereolithography (STL)'),
-        ('vtk', {'vtk'}, 'Visualization Toolkit Legacy'),
-        ('vtu', {'vtu'}, 'Visualization Toolkit XML-based'),
+        ('vtk', {'vtk'}, 'Visualization Toolkit Legacy (VTK)'),
+        ('vtu', {'vtu'}, 'Visualization Toolkit XML-based (VTU)'),
     ]
 
     COORDS = [
@@ -89,7 +89,6 @@ class ExporterDialog(QDialog):
     def __init__(self, poly, project, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.poly = poly
-        self.project = project
         self.selected_filter = None
         self.ui = Ui_Exporter()
         self.ui.setupUi(self)
@@ -98,9 +97,12 @@ class ExporterDialog(QDialog):
         self._recompute_count = 0
 
         # Populate dropdown boxes
+        self.ui.projects.addItems([project.name for project in poly.projects()])
         self.ui.formats.addItems([name for _, _, name in self.FORMATS])
         self.ui.coordinates.addItems([name for _, name, _ in self.COORDS])
         self.ui.colormaps.addItems(sorted(export.list_colormaps()))
+
+        self.ui.projects.setCurrentIndex(next(i for i, p in enumerate(poly.projects()) if p is project))
 
         # Set the default settings based on the previous time
         data = DataFile()
@@ -118,6 +120,7 @@ class ExporterDialog(QDialog):
             self.ui.filename.setEditText(poly.name)
 
         # Connect signals
+        self.ui.projects.currentIndexChanged.connect(self.project_changed)
         self.ui.filename.currentTextChanged.connect(self.filename_changed)
         self.ui.browsebtn.clicked.connect(self.browse)
         self.ui.formats.currentIndexChanged.connect(self.format_changed)
@@ -131,6 +134,10 @@ class ExporterDialog(QDialog):
         self.update_resolution_suffix()
 
         self.setFixedSize(self.size())
+
+    @property
+    def project(self):
+        return self.poly.projects()[self.ui.projects.currentIndex()]
 
     @property
     def boundary_mode(self):
@@ -168,7 +175,10 @@ class ExporterDialog(QDialog):
 
     @coords.setter
     def coords(self, value):
-        self.ui.coordinates.setCurrentIndex(next(i for i, (v, _, _) in enumerate(self.COORDS) if v == value))
+        try:
+            self.ui.coordinates.setCurrentIndex(next(i for i, (v, _, _) in enumerate(self.COORDS) if v == value))
+        except StopIteration:
+            self.ui.coordinates.setCurrentIndex(0)
 
     @property
     def coords_unit(self):
@@ -188,7 +198,10 @@ class ExporterDialog(QDialog):
 
     @format.setter
     def format(self, value):
-        self.ui.formats.setCurrentIndex(next(i for i, (fmt, _, _) in enumerate(self.FORMATS) if value == fmt))
+        try:
+            self.ui.formats.setCurrentIndex(next(i for i, (fmt, _, _) in enumerate(self.FORMATS) if value == fmt))
+        except StopIteration:
+            self.ui.formats.setCurrentIndex(0)
 
     @property
     def format_suffixes(self):
@@ -198,13 +211,20 @@ class ExporterDialog(QDialog):
     def image_mode(self):
         return export.is_image_format(self.format)
 
+    @property
+    def color_maps_enabled(self):
+        return self.image_mode and self.project.ndims == 1
+
+    def project_changed(self):
+        self.ui.colormaps.setEnabled(self.color_maps_enabled)
+
     def format_changed(self):
         self.ui.exterior_bnd.setEnabled(self.image_mode)
         self.ui.interior_bnd.setEnabled(self.image_mode)
         self.ui.no_rot.setEnabled(self.image_mode)
         self.ui.north_rot.setEnabled(self.image_mode)
         self.ui.free_rot.setEnabled(self.image_mode)
-        self.ui.colormaps.setEnabled(self.image_mode)
+        self.ui.colormaps.setEnabled(self.color_maps_enabled)
         self.ui.textures.setEnabled(export.supports_texture(self.format))
 
         filename = Path(self.ui.filename.currentText())
@@ -606,7 +626,7 @@ class GUI(Ui_MainWindow):
         project to be updated, shown or hidden. If select is true and
         the page is shown, it is also selected.
         """
-        activate = self.poly.thumbnail(project) or self.poly.njobs(project=project) > 0
+        activate = self.poly.is_project_active(project)
         widget = self._project_tabs[project]
         index = self.projects.indexOf(widget)
 

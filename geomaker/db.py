@@ -134,6 +134,19 @@ class Polygon(DeclarativeBase):
     def area(self):
         return geojson_area({'type': 'Polygon', 'coordinates': [list(self.geometry())]})
 
+    def projects(self, pending=False, strings=False):
+        projects = {assoc.project for assoc in self.assocs}
+        if pending:
+            projects |= {job.project for job in self.jobs}
+        if strings:
+            return projects
+        return sorted([PROJECTS[p] for p in projects])
+
+    def is_project_active(self, project, pending=False):
+        project = str(project)
+        projects = self.projects(pending=pending, strings=True)
+        return project in projects
+
     @contextmanager
     def _assoc_query(self, cls, **kwargs):
         """Helper function for constructing a query for associated
