@@ -658,7 +658,7 @@ class GUI(Ui_MainWindow):
         project to be updated, shown or hidden. If select is true and
         the page is shown, it is also selected.
         """
-        activate = self.poly.is_project_active(project)
+        activate = self.poly.is_project_active(project, pending=True)
         widget = self._project_tabs[project]
         index = self.projects.indexOf(widget)
 
