@@ -551,7 +551,7 @@ class GeoTIFF(DataFile):
     def populate(self):
         """Refresh the bounding box data."""
         rx, ry = self.resolution
-        nx, ny = self.shape
+        ny, nx = self.shape
         i, j, k, x, y, z = self._dataset().geotiff_metadata['ModelTiepoint']
 
         assert i == j == k == z == 0
