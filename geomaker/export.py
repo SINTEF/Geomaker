@@ -229,7 +229,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         mesh = STLMesh(np.zeros(tri.shape[0], STLMesh.dtype))
         mesh.vectors[:,:,0] = out_x[tri]
         mesh.vectors[:,:,1] = out_y[tri]
-        mesh.vectors[:,:,2] = data[tri]
+        mesh.vectors[:,:,2] = data[tri,0]
         mesh.save(filename)
     elif format in ('vtk', 'vtu'):
         import vtk
