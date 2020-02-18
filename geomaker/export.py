@@ -167,7 +167,7 @@ def export_job(*args, **kwargs):
 
 def export(polygon, project, manager, boundary_mode='exterior',
            rotation_mode='none', coords='utm33n', resolution=None,
-           maxpts=None, format='png', colormap='terrain',
+           maxpts=None, format='png', colormap='Terrain',
            invert=False, texture=False, zero_sea_level=True,
            filename=None, directory=None):
 
