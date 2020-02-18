@@ -92,6 +92,7 @@ class ThreadManager(QObject):
         worker.finished.connect(reporter.finished)
         worker.finished.connect(self.finished)
         worker.errored.connect(self.errored)
+        worker.errored.connect(reporter.finished)
 
         # Prevent undue garbage collection!
         self._thread = thread
@@ -122,20 +123,7 @@ class ThreadManager(QObject):
             retval = None
         self._worker.respond_synchronously(retval)
 
-    @pyqtSlot(object)
-    def errored(self, info):
-        traceback.print_exception(*info)
-        _, exception, _ = info
-        QMessageBox.critical(self._parent, 'Error', str(exception))
-
-    @pyqtSlot(object)
-    def finished(self, result):
-        """Cleanly exit the thread and clean up.
-        After this, the thread manager can be re-used for new jobs.
-        """
-        if self._callback:
-            self._callback(result)
-
+    def cleanup(self, proceed=True):
         self._thread.quit()
         self._thread.wait()
         self._thread.deleteLater()
@@ -146,9 +134,27 @@ class ThreadManager(QObject):
         self._reporter = None
         self._callback = None
 
-        if self._queue:
+        if proceed and self._queue:
             args = self._queue.pop(0)
             self._run(*args)
+
+    @pyqtSlot(object)
+    def errored(self, info):
+        traceback.print_exception(*info)
+        _, exception, _ = info
+        QMessageBox.critical(self._parent, 'Error', str(exception))
+
+        self.cleanup()
+
+    @pyqtSlot(object)
+    def finished(self, result):
+        """Cleanly exit the thread and clean up.
+        After this, the thread manager can be re-used for new jobs.
+        """
+        if self._callback:
+            self._callback(result)
+
+        self.cleanup()
 
     def close(self):
         if self._thread is not None:
