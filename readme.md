@@ -72,7 +72,7 @@ The following packages are optional, for generating various output:
 - splipy (for producing B-Spline output)
 - vtk (for VTU and VTK format)
 
-Additionally, for generating STL output the
+Additionally, for generating triangulated output (VTU, VTK, STL) the
 [triangle](http://www.cs.cmu.edu/~quake/triangle.html) library must be
 installed. Geomaker will search for `libtriangle-1.6.so` (let me know
 if you need this to be configurable). This can be installed in Ubuntu
