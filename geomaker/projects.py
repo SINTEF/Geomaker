@@ -50,9 +50,7 @@ class DigitalHeightModel(Project):
         }
 
         code, response = util.make_request('startExport', params)
-        if response is None:
-            return f'HTTP code {code}'
-        elif 'Error'in response:
+        if 'Error'in response:
             return response['Error']
         elif not response.get('Success', False):
             return 'Unknown error'

@@ -601,13 +601,9 @@ class Job(DeclarativeBase):
         if self.stage in ('downloaded', 'complete'):
             return self
         code, response = util.make_request('exportStatus', {'JobID': self.jobid})
-        if response is None:
-            self.stage = 'error'
-            self.error = f'HTTP code {code}'
-        else:
-            self.stage = response['Status']
-            if self.stage == 'complete':
-                self.url = response['Url']
+        self.stage = response['Status']
+        if self.stage == 'complete':
+            self.url = response['Url']
         Database().commit()
         if self.url is not None:
             return self

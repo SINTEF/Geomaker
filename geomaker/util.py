@@ -1,6 +1,7 @@
 from io import BytesIO
 from itertools import chain
 import json
+import sys
 
 from humanfriendly import format_size
 import numpy as np
@@ -30,14 +31,16 @@ def make_request(endpoint, params):
     url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
     response = requests.get(url)
     if response.status_code != 200:
-        return response.status_code, None
+        print(response.text, file=sys.stderr)
+        raise Exception(f'HTTP status code {response.status_code}. See stderr for more information.')
     return response.status_code, json.loads(response.text)
 
 
 def download_streaming(url, mgr):
     response = requests.get(url, stream=True)
     if response.status_code != 200:
-        raise Exception(f'HTTP Code {response.status_code}: {response.text}')
+        print(response.text, file=sys.stderr)
+        raise Exception(f'HTTP status code {response.status_code}. See stderr for more information.')
     nbytes = int(response.headers['Content-Length'])
     mgr.report_max(nbytes)
     responsedata = BytesIO()
