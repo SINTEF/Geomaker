@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>793</width>
-    <height>346</height>
+    <height>418</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -52,14 +52,47 @@
            <property name="bottomMargin">
             <number>0</number>
            </property>
-           <item row="0" column="0">
-            <widget class="QLabel" name="Location">
-             <property name="text">
-              <string>File:</string>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="filename">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="editable">
+              <bool>true</bool>
              </property>
             </widget>
            </item>
-           <item row="9" column="0" colspan="3">
+           <item row="7" column="1" colspan="2">
+            <widget class="QComboBox" name="colormaps"/>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="label">
+             <property name="text">
+              <string>Format:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="10" column="1" colspan="2">
+            <widget class="QCheckBox" name="zero_sea_level">
+             <property name="text">
+              <string>Zero at sea level</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1" colspan="2">
+            <widget class="QComboBox" name="coordinates"/>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="label_3">
+             <property name="text">
+              <string>Coordinates:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="13" column="0" colspan="3">
             <widget class="QWidget" name="widget_3" native="true">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -1436,33 +1469,68 @@
              </layout>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="filename">
+           <item row="1" column="2">
+            <widget class="QPushButton" name="browsebtn">
+             <property name="text">
+              <string>Browse...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="12" column="1">
+            <widget class="QCheckBox" name="textures">
+             <property name="text">
+              <string>Include texture coordinates</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="0">
+            <widget class="QLabel" name="label_2">
+             <property name="text">
+              <string>Resolution:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="Location">
+             <property name="text">
+              <string>File:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="7" column="0">
+            <widget class="QLabel" name="label_4">
+             <property name="text">
+              <string>Color map:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1" colspan="2">
+            <widget class="QComboBox" name="formats"/>
+           </item>
+           <item row="0" column="1" colspan="2">
+            <widget class="QComboBox" name="projects"/>
+           </item>
+           <item row="8" column="1" colspan="2">
+            <widget class="QLabel" name="colormap_preview">
              <property name="sizePolicy">
-              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-               <horstretch>1</horstretch>
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>0</horstretch>
                <verstretch>0</verstretch>
               </sizepolicy>
              </property>
-             <property name="editable">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1" colspan="2">
-            <widget class="QComboBox" name="formats"/>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="label">
              <property name="text">
-              <string>Format:</string>
+              <string/>
              </property>
             </widget>
            </item>
-           <item row="6" column="1" colspan="2">
-            <widget class="QComboBox" name="colormaps"/>
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_5">
+             <property name="text">
+              <string>Project:</string>
+             </property>
+            </widget>
            </item>
-           <item row="4" column="1" colspan="2">
+           <item row="5" column="1" colspan="2">
             <widget class="QDoubleSpinBox" name="resolution">
              <property name="suffix">
               <string>m</string>
@@ -1478,45 +1546,7 @@
              </property>
             </widget>
            </item>
-           <item row="6" column="0">
-            <widget class="QLabel" name="label_4">
-             <property name="text">
-              <string>Color map:</string>
-             </property>
-            </widget>
-           </item>
-           <item row="4" column="0">
-            <widget class="QLabel" name="label_2">
-             <property name="text">
-              <string>Resolution:</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="2">
-            <widget class="QPushButton" name="browsebtn">
-             <property name="text">
-              <string>Browse...</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1" colspan="2">
-            <widget class="QComboBox" name="coordinates"/>
-           </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="label_3">
-             <property name="text">
-              <string>Coordinates:</string>
-             </property>
-            </widget>
-           </item>
-           <item row="7" column="1" colspan="2">
-            <widget class="QCheckBox" name="zero_sea_level">
-             <property name="text">
-              <string>Zero at sea level</string>
-             </property>
-            </widget>
-           </item>
-           <item row="5" column="1" colspan="2">
+           <item row="6" column="1" colspan="2">
             <widget class="QWidget" name="widget_4" native="true">
              <property name="minimumSize">
               <size>
@@ -1654,10 +1684,10 @@
              </layout>
             </widget>
            </item>
-           <item row="8" column="1">
-            <widget class="QCheckBox" name="textures">
+           <item row="9" column="1">
+            <widget class="QCheckBox" name="invertmap">
              <property name="text">
-              <string>Include texture coordinates</string>
+              <string>Invert color map</string>
              </property>
             </widget>
            </item>

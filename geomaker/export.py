@@ -27,16 +27,125 @@ def supports_texture(fmt):
     return fmt in ('vtk', 'vtu')
 
 
-def list_colormaps():
-    return colormap.cmap_d.keys()
+CATEGORIZED_MAPS = [
+    {
+        'title': 'Perceptually Uniform Sequential',
+        'entries': {
+            'Viridis': 'viridis', 'Plasma': 'plasma',
+            'Inferno': 'inferno', 'Magma': 'magma',
+            'Cividis': 'cividis',
+        },
+    },
+    {
+        'title': 'Sequential',
+        'entries': {
+            'Greys': 'Greys',
+            'Purples': 'Purples',
+            'Blues': 'Blues',
+            'Greens': 'Greens',
+            'Oranges': 'Oranges',
+            'Reds': 'Reds',
+            'Orange-Red': 'OrRd',
+            'Purple-Red': 'PuRd',
+            'Red-Purple': 'RdPu',
+            'Blue-Purple': 'BuPu',
+            'Purple-Blue': 'PuBu',
+            'Green-Blue': 'GnBu',
+            'Blue-Green': 'BuGn',
+            'Yellow-Green': 'YlGn',
+            'Yellow-Orange-Brown': 'YlOrBr',
+            'Yellow-Orange-Red': 'YlOrRd',
+            'Yellow-Green-Blue': 'YlGnBu',
+            'Purple-Blue-Green': 'PuBuGn',
+        },
+    },
+    {
+        'title': 'Sequential (2)',
+        'entries': {
+            'Gray': 'gray',
+            'Bone': 'bone',
+            'Pink': 'pink',
+            'Spring': 'spring',
+            'Summer': 'summer',
+            'Autumn': 'autumn',
+            'Winter': 'winter',
+            'Hot': 'hot',
+            'Cool': 'cool',
+            'Wistia': 'Wistia',
+            'Copper': 'copper',
+        },
+    },
+    {
+        'title': 'Diverging',
+        'entries': {
+            'Pink-Green': 'PiYG',
+            'Purple-Green': 'PRGn',
+            'Brown-Blue-Green': 'BrBG',
+            'Orange-Purple': 'PuOr',
+            'Red-Gray': 'RdGy',
+            'Red-Blue': 'RdBu',
+            'Red-Yellow-Blue': 'RdYlBu',
+            'Red-Yellow-Green': 'RdYlGn',
+            'Blue-White-Red': 'bwr',
+            'Spectral': 'Spectral',
+            'Cool-Warm': 'coolwarm',
+            'Seismic': 'seismic',
+        },
+    },
+    {
+        'title': 'Cyclic',
+        'entries': {
+            'Twilight': 'twilight',
+            'Twilight (shifted)': 'twilight_shifted',
+            'Hue': 'hsv',
+        },
+    },
+    {
+        'title': 'Miscellaneous',
+        'entries': {
+            'Cube Helix': 'cubehelix',
+            'Gnuplot': 'gnuplot',
+            'Gnuplot 2': 'gnuplot2',
+            'Jet': 'jet',
+            'Ocean': 'ocean',
+            'Rainbow': 'rainbow',
+            'Terrain': 'terrain',
+            'GIST Earth': 'gist_earth',
+            'GIST Stern': 'gist_stern',
+            'GIST Rainbow': 'gist_rainbow',
+        },
+    },
+]
+
+COLORMAPS = {
+    name: value
+    for category in CATEGORIZED_MAPS
+    for name, value in category['entries'].items()
+}
+
+def iter_map_categories():
+    for category in CATEGORIZED_MAPS:
+        filtered_keys = [key for key, name in category['entries'].items() if name in colormap.cmap_d]
+        yield category['title'], filtered_keys
+
+def get_colormap(name, invert=False):
+    name = COLORMAPS[name]
+    if invert:
+        name += '_r'
+    return getattr(colormap, name)
+
+def preview_colormap(name, res=100, invert=False):
+    data = np.linspace(0, 1, res)[np.newaxis, :]
+    data = get_colormap(name, invert=invert)(data, bytes=True)
+    return data
 
 
-def array_to_image(data, fmt, cmap, filename):
+def array_to_image(data, fmt, filename, cmap=None, invert=False):
     if data.shape[-1] == 1:
         maxval = np.max(data)
         if maxval > 0:
             data /= np.max(data)
-        data = getattr(colormap, cmap)(data[...,0], bytes=True)
+        data = get_colormap(cmap, invert=invert)(data[...,0], bytes=True)
     else:
         data = data.astype(np.uint8)
     if data.shape[-1] == 4 and fmt == 'jpeg':
@@ -59,8 +168,8 @@ def export_job(*args, **kwargs):
 def export(polygon, project, manager, boundary_mode='exterior',
            rotation_mode='none', coords='utm33n', resolution=None,
            maxpts=None, format='png', colormap='terrain',
-           texture=False, zero_sea_level=True, filename=None,
-           directory=None):
+           invert=False, texture=False, zero_sea_level=True,
+           filename=None, directory=None):
 
     if not supports_texture(format):
         texture = False
@@ -105,7 +214,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         filename = Path(directory) / filename
 
     if image_mode:
-        array_to_image(data, format, colormap, filename)
+        array_to_image(data, format, filename, cmap=colormap, invert=invert)
     elif format == 'g2':
         from splipy import Surface, BSplineBasis
         from splipy.io import G2
