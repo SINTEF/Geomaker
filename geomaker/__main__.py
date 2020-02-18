@@ -10,9 +10,9 @@ import numpy as np
 
 from PyQt5.QtCore import (
     Qt, QObject, QEvent, QItemSelectionModel, QModelIndex, QThread,
-    QUrl, pyqtSignal, pyqtSlot,
+    QUrl, pyqtSignal, pyqtSlot
 )
-from PyQt5.QtGui import QPixmap, QIcon, QKeyEvent
+from PyQt5.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QFont
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWidgets import (
     QApplication, QDialog, QFileDialog, QInputDialog, QLayout,
@@ -98,11 +98,26 @@ class ExporterDialog(QDialog):
 
         # Populate dropdown boxes
         self.ui.projects.addItems([project.name for project in poly.projects()])
+        self.ui.projects.setCurrentIndex(next(i for i, p in enumerate(poly.projects()) if p is project))
+
         self.ui.formats.addItems([name for _, _, name in self.FORMATS])
         self.ui.coordinates.addItems([name for _, name, _ in self.COORDS])
-        self.ui.colormaps.addItems(sorted(export.list_colormaps()))
 
-        self.ui.projects.setCurrentIndex(next(i for i, p in enumerate(poly.projects()) if p is project))
+        # The list of color maps requires some messing around
+        boldfont = QFont(self.ui.colormaps.font())
+        boldfont.setBold(True)
+        for category, entries in export.iter_map_categories():
+            if self.ui.colormaps.count() > 0:
+                self.ui.colormaps.insertSeparator(self.ui.colormaps.count())
+
+            self.ui.colormaps.addItem(category.upper())
+            idx = self.ui.colormaps.count() - 1
+            self.ui.colormaps.setItemData(idx, boldfont, Qt.FontRole)
+            self.ui.colormaps.setItemData(idx, Qt.AlignCenter, Qt.TextAlignmentRole)
+            item = self.ui.colormaps.model().item(idx)
+            item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+
+            self.ui.colormaps.addItems(entries)
 
         # Set the default settings based on the previous time
         data = DataFile()
@@ -114,7 +129,8 @@ class ExporterDialog(QDialog):
         self.boundary_mode = data.get('export-boundary-mode', 'interior')
         self.rotation_mode = data.get('export-rotation-mode', 'north')
         self.coords = data.get('export-coords', 'utm33n')
-        self.colormap = data.get('export-colormap', 'terrain')
+        self.colormap = data.get('export-colormap', 'Terrain')
+        self.ui.invertmap.setChecked(data.get('export-colormap-invert', False))
 
         if self.ui.filename.currentText().strip() == '':
             self.ui.filename.setEditText(poly.name)
@@ -125,11 +141,14 @@ class ExporterDialog(QDialog):
         self.ui.browsebtn.clicked.connect(self.browse)
         self.ui.formats.currentIndexChanged.connect(self.format_changed)
         self.ui.coordinates.currentIndexChanged.connect(self.coords_changed)
+        self.ui.colormaps.currentIndexChanged.connect(self.colormap_changed)
+        self.ui.invertmap.stateChanged.connect(self.colormap_changed)
         self.ui.okbtn.clicked.connect(self.accept)
         self.ui.cancelbtn.clicked.connect(self.reject)
         self.ui.refreshbtn.clicked.connect(self.recompute)
 
         # Trigger some basic validation
+        self.colormap_changed()
         self.format_changed()
         self.update_resolution_suffix()
 
@@ -190,7 +209,10 @@ class ExporterDialog(QDialog):
 
     @colormap.setter
     def colormap(self, value):
-        self.ui.colormaps.setCurrentText(value)
+        try:
+            self.ui.colormaps.setCurrentText(value)
+        except:
+            pass
 
     @property
     def format(self):
@@ -242,6 +264,14 @@ class ExporterDialog(QDialog):
         elif self.coords_unit == 'm' and self.ui.resolution.suffix() == '°':
             self.ui.resolution.setValue(self.ui.resolution.value() / 90 * 10000)
         self.update_resolution_suffix()
+
+    def colormap_changed(self):
+        data = export.preview_colormap(self.colormap, res=500, invert=self.ui.invertmap.isChecked())
+        image = QImage(data.data, data.shape[1], data.shape[0], QImage.Format_RGBA8888)
+        self.ui.colormap_preview.setPixmap(QPixmap(image).scaled(
+            max(690, self.ui.colormap_preview.width()),
+            self.ui.colormap_preview.height(),
+        ))
 
     def update_resolution_suffix(self):
         self.ui.resolution.setSuffix(self.coords_unit)
@@ -325,6 +355,7 @@ class ExporterDialog(QDialog):
 
             if self.image_mode:
                 data.update({
+                    'export-colormap-invert': self.ui.invertmap.isChecked(),
                     'export-colormap': self.colormap,
                     'export-boundary-mode': self.boundary_mode,
                     'export-rotation-mode': self.rotation_mode,
@@ -353,6 +384,7 @@ class ExporterDialog(QDialog):
             resolution=self.ui.resolution.value(),
             format=self.format,
             colormap=self.colormap,
+            invert=self.ui.invertmap.isChecked(),
             texture=self.ui.textures.isChecked(),
             zero_sea_level=self.ui.zero_sea_level.isChecked(),
             filename=self.ui.filename.currentText(),
