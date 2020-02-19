@@ -9,6 +9,8 @@ from pygeotile.point import Point as PyGeoPoint
 from pygeotile.tile import Tile as PyGeoTile
 import requests
 import utm
+import tifffile as tif
+import tifffile.tifffile_geodb as geodb
 
 
 class SingletonMeta(type):
@@ -227,3 +229,30 @@ def geotiles(points, zoom):
         border = new_border
 
     return tileset
+
+
+def verify_geotiff(filename):
+    """Runs some basic checks on a (presumed) GeoTIFF file to verify
+    that some assumptions we have are correct. The GeoTIFF file format
+    is too varied to support in its entirety.
+    """
+
+    with tif.TiffFile(filename) as tiff:
+        assert tiff.is_geotiff
+        metadata = tiff.geotiff_metadata
+
+        i, j, k, x, y, z = metadata['ModelTiepoint']
+        assert i == j == k == z == 0
+
+        rx, ry, rz = metadata['ModelPixelScale']
+        assert rz == 0
+        assert rx == ry
+
+        assert metadata['GTModelTypeGeoKey'] == geodb.ModelType.Projected
+        assert metadata['GTRasterTypeGeoKey'] == geodb.RasterPixel.IsArea
+        assert metadata['GeogGeodeticDatumGeoKey'] == geodb.Datum.European_Reference_System_1989
+        assert metadata['GeogPrimeMeridianGeoKey'] == geodb.PM.Greenwich
+        assert metadata['GeogPrimeMeridianLongGeoKey'] == 0
+        assert metadata['ProjectedCSTypeGeoKey'] == 25833   # UTM33N
+        assert metadata['ProjLinearUnitsGeoKey'] == geodb.Linear.Meter
+        assert metadata['VerticalUnitsGeoKey'] == geodb.Linear.Meter

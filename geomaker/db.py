@@ -628,6 +628,7 @@ class Job(DeclarativeBase):
                 filename = filesystem.project_file(self.project, filename)
                 with open(filename, 'wb') as f:
                     f.write(filedata)
+                util.verify_geotiff(filename)
                 filenames.append(filename)
 
         with Database().session() as s:
