@@ -218,8 +218,9 @@ def export(polygon, project, manager, boundary_mode='exterior',
     elif format == 'g2':
         from splipy import Surface, BSplineBasis
         from splipy.io import G2
-        cpts = np.stack([out_x, out_y, data], axis=2)
-        knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape]
+        print(out_x.shape, out_y.shape, data.shape)
+        cpts = np.stack([out_x, out_y, data[...,0]], axis=2)
+        knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape[:2]]
         bases = [BSplineBasis(order=2, knots=kts) for kts in knots]
         srf = Surface(*bases, cpts, raw=True)
         with G2(filename) as g2:
