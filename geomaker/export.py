@@ -22,9 +22,20 @@ def has_support(fmt):
         return False
     return True
 
-
 def supports_texture(fmt):
     return fmt in ('vtk', 'vtu')
+
+def supports_structured_choice(fmt):
+    return fmt in ('vtk',)
+
+def is_image_format(fmt):
+    return fmt in ('png', 'jpeg')
+
+def is_structured_format(fmt):
+    """Return true if FMT is inherently structured. If the format can
+    support unstructured AND structured grids, return false.
+    """
+    return is_image_format(fmt) or fmt in ('vts', 'g2')
 
 
 CATEGORIZED_MAPS = [
@@ -156,10 +167,6 @@ def array_to_image(data, fmt, filename, cmap=None, invert=False):
     image.save(str(filename), format=fmt.upper())
 
 
-def is_image_format(fmt):
-    return fmt in {'png', 'jpeg'}
-
-
 @async_job()
 def export_job(*args, **kwargs):
     return export(*args, **kwargs)
@@ -167,29 +174,31 @@ def export_job(*args, **kwargs):
 
 def export(polygon, project, manager, boundary_mode='exterior',
            rotation_mode='none', coords='utm33n', resolution=None,
-           maxpts=None, format='png', colormap='Terrain',
-           invert=False, texture=False, zero_sea_level=True,
-           filename=None, directory=None):
+           maxpts=None, format='png', structured=False,
+           colormap='Terrain', invert=False, texture=False,
+           zero_sea_level=True, filename=None, directory=None):
 
+    # Sanitize parameters
+    image_mode = is_image_format(format)
     if not supports_texture(format):
         texture = False
-
-    manager.report_max(4 if texture else 3)
-
-    image_mode = is_image_format(format)
+    if not supports_structured_choice(format):
+        structured = is_structured_format(fmt)
     if not image_mode:
         boundary_mode = 'actual'
         rotation_mode = 'none'
 
+    manager.report_max(4 if texture else 3)
+
     manager.report_message('Generating geometry')
-    if format in ('stl', 'vtk', 'vtu'):
-        (in_x, in_y), (out_x, out_y), tri = polygon.generate_triangulation(
-            in_coords=project.coords, out_coords=coords, resolution=resolution,
-        )
-    else:
+    if structured:
         (in_x, in_y), (out_x, out_y) = polygon.generate_meshgrid(
             boundary_mode, rotation_mode, in_coords=project.coords,
             out_coords=coords, resolution=resolution, maxpts=maxpts,
+        )
+    else:
+        (in_x, in_y), (out_x, out_y), tri = polygon.generate_triangulation(
+            in_coords=project.coords, out_coords=coords, resolution=resolution,
         )
     manager.increment_progress()
 
@@ -232,26 +241,37 @@ def export(polygon, project, manager, boundary_mode='exterior',
         mesh.vectors[:,:,1] = out_y[tri]
         mesh.vectors[:,:,2] = data[tri,0]
         mesh.save(filename)
-    elif format in ('vtk', 'vtu'):
+    elif format in ('vtk', 'vtu', 'vts'):
         import vtk
         import vtk.util.numpy_support as vtknp
-        pointsarray = np.stack([out_x, out_y, data[:,0]], axis=1)
+
+        pointsarray = np.stack([out_x.flat, out_y.flat, data.flat], axis=1)
         points = vtk.vtkPoints()
         points.SetData(vtknp.numpy_to_vtk(pointsarray))
 
-        ncells = len(tri)
-        cellarray = np.concatenate([3*np.ones((ncells, 1), dtype=int), tri], axis=1)
-        cells = vtk.vtkCellArray()
-        cells.SetCells(ncells, vtknp.numpy_to_vtkIdTypeArray(cellarray.ravel()))
+        if structured:
+            grid = vtk.vtkStructuredGrid()
+            grid.SetDimensions(*out_x.shape[::-1], 1)
+        else:
+            ncells = len(tri)
+            cellarray = np.concatenate([3*np.ones((ncells, 1), dtype=int), tri], axis=1)
+            cells = vtk.vtkCellArray()
+            cells.SetCells(ncells, vtknp.numpy_to_vtkIdTypeArray(cellarray.ravel()))
+            grid = vtk.vtkUnstructuredGrid()
+            grid.SetCells(vtk.VTK_TRIANGLE, cells)
 
-        grid = vtk.vtkUnstructuredGrid()
         grid.SetPoints(points)
-        grid.SetCells(vtk.VTK_TRIANGLE, cells)
 
         if texture:
-            grid.GetPointData().SetTCoords(vtknp.numpy_to_vtk(uvcoords))
+            grid.GetPointData().SetTCoords(vtknp.numpy_to_vtk(uvcoords.reshape(-1, 2)))
 
-        writer = (vtk.vtkUnstructuredGridWriter if format == 'vtk' else vtk.vtkXMLUnstructuredGridWriter)()
+        if format == 'vts':
+            writer = vtk.vtkXMLStructuredGridWriter()
+        elif format == 'vtu':
+            writer = vtk.vtkXMLUnstructuredGridWriter()
+        else:
+            writer = vtk.vtkStructuredGridWriter() if structured else vtk.vtkUnstructuredGridWriter()
+
         writer.SetFileName(filename)
         writer.SetInputData(grid)
         writer.Write()

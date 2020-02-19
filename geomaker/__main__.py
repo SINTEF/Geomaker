@@ -78,7 +78,8 @@ class ExporterDialog(QDialog):
         ('g2', {'g2'}, 'GoTools B-Splines (G2)'),
         ('stl', {'stl'}, 'Stereolithography (STL)'),
         ('vtk', {'vtk'}, 'Visualization Toolkit Legacy (VTK)'),
-        ('vtu', {'vtu'}, 'Visualization Toolkit XML-based (VTU)'),
+        ('vtu', {'vtu'}, 'Visualization Toolkit Unstructured (VTU)'),
+        ('vts', {'vts'}, 'Visualization Toolkit Structured (VTS)'),
     ]
 
     COORDS = [
@@ -131,6 +132,7 @@ class ExporterDialog(QDialog):
         self.coords = data.get('export-coords', 'utm33n')
         self.colormap = data.get('export-colormap', 'Terrain')
         self.ui.invertmap.setChecked(data.get('export-colormap-invert', False))
+        self.ui.structured.setChecked(data.get('export-structured', False))
 
         if self.ui.filename.currentText().strip() == '':
             self.ui.filename.setEditText(poly.name)
@@ -248,6 +250,7 @@ class ExporterDialog(QDialog):
         self.ui.free_rot.setEnabled(self.image_mode)
         self.ui.colormaps.setEnabled(self.color_maps_enabled)
         self.ui.textures.setEnabled(export.supports_texture(self.format))
+        self.ui.structured.setEnabled(export.supports_structured_choice(self.format))
 
         filename = Path(self.ui.filename.currentText())
         if filename.suffix[1:] not in self.format_suffixes:
@@ -351,6 +354,7 @@ class ExporterDialog(QDialog):
                 'export-coords': self.coords,
                 'export-zero-sea': self.ui.zero_sea_level.isChecked(),
                 'export-textures': self.ui.textures.isChecked(),
+                'export-structured': self.ui.structured.isChecked(),
             })
 
             if self.image_mode:
@@ -383,6 +387,7 @@ class ExporterDialog(QDialog):
             coords=self.coords,
             resolution=self.ui.resolution.value(),
             format=self.format,
+            structured=self.ui.structured.isChecked(),
             colormap=self.colormap,
             invert=self.ui.invertmap.isChecked(),
             texture=self.ui.textures.isChecked(),
