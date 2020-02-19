@@ -16,7 +16,7 @@ def has_support(fmt):
             import splipy
         elif fmt == 'stl':
             import stl
-        elif fmt in ('vtk', 'vtu'):
+        elif fmt in ('vtk', 'vtu', 'vts'):
             import vtk
     except ImportError:
         return False
