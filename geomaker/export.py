@@ -16,7 +16,7 @@ def has_support(fmt):
             import splipy
         elif fmt == 'stl':
             import stl
-        elif fmt in ('vtk', 'vtu'):
+        elif fmt in ('vtk', 'vtu', 'vts'):
             import vtk
     except ImportError:
         return False
@@ -29,13 +29,18 @@ def supports_structured_choice(fmt):
     return fmt in ('vtk',)
 
 def is_image_format(fmt):
+    # Note: GeoTIFF is not an image format
     return fmt in ('png', 'jpeg')
+
+def requires_rectangle(fmt):
+    return is_image_format(fmt) or fmt == 'tiff'
 
 def is_structured_format(fmt):
     """Return true if FMT is inherently structured. If the format can
-    support unstructured AND structured grids, return false.
+    support unstructured AND structured grids, return false. In that
+    case, supports_structured_choice should return true.
     """
-    return is_image_format(fmt) or fmt in ('vts', 'g2')
+    return is_image_format(fmt) or fmt in ('vts', 'g2', 'tiff')
 
 
 CATEGORIZED_MAPS = [
@@ -183,16 +188,19 @@ def export(polygon, project, manager, boundary_mode='exterior',
     if not supports_texture(format):
         texture = False
     if not supports_structured_choice(format):
-        structured = is_structured_format(fmt)
-    if not image_mode:
+        structured = is_structured_format(format)
+    if not requires_rectangle(format):
         boundary_mode = 'actual'
         rotation_mode = 'none'
+
+    if format == 'tiff' and coords != 'utm33n':
+        raise ValueError('GeoTIFF output for other formats than UTM33N is not supported')
 
     manager.report_max(4 if texture else 3)
 
     manager.report_message('Generating geometry')
     if structured:
-        (in_x, in_y), (out_x, out_y) = polygon.generate_meshgrid(
+        (in_x, in_y), (out_x, out_y), trf = polygon.generate_meshgrid(
             boundary_mode, rotation_mode, in_coords=project.coords,
             out_coords=coords, resolution=resolution, maxpts=maxpts,
         )
@@ -227,7 +235,6 @@ def export(polygon, project, manager, boundary_mode='exterior',
     elif format == 'g2':
         from splipy import Surface, BSplineBasis
         from splipy.io import G2
-        print(out_x.shape, out_y.shape, data.shape)
         cpts = np.stack([out_x, out_y, data[...,0]], axis=2)
         knots = [[0.0] + list(map(float, range(n))) + [float(n-1)] for n in data.shape[:2]]
         bases = [BSplineBasis(order=2, knots=kts) for kts in knots]
@@ -275,6 +282,25 @@ def export(polygon, project, manager, boundary_mode='exterior',
         writer.SetFileName(filename)
         writer.SetInputData(grid)
         writer.Write()
+    elif format == 'tiff':
+        import tifffile
+        tifffile.imwrite(
+            filename, data[:,::-1].T,
+            extratags=[
+                # GeoKeyDirectoryTag
+                (34735, 'h', 28,
+                 (1, 1, 1, 6,             # Version and number of geo keys
+                  1024, 0, 1, 1,          # GTModelTypeGeoKey (2D projected CRS)
+                  1025, 0, 1, 1,          # GTRasterTypeGeoKey (pixels denote areas)
+                  2048, 0, 1, 4258,       # GeodeticCRSGeoKey (ETRS89)
+                  2050, 0, 1, 6258,       # GeodeticDatumGeoKey (ETRS89)
+                  2051, 0, 1, 8901,       # PrimeMeridianGeoKey (Greenwich)
+                  3072, 0, 1, 25833,      # ProjectedCRSGeoKey (ETRS89: UTM33N)
+                  ), True),
+                # ModelTransformationTag
+                (34264, 'd', 16, tuple(trf.flat), True),
+            ]
+        )
 
     manager.increment_progress()
 

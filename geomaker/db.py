@@ -335,7 +335,13 @@ class Polygon(DeclarativeBase):
         in_x, in_y = util.to_latlon((out_x, out_y), out_coords)
         in_x, in_y = util.from_latlon((in_x, in_y), in_coords)
 
-        return (in_x, in_y), (out_x, out_y)
+        # Compute transformation matrix in case geometry has been rectangularized
+        if mode != 'actual':
+            trf = util.transformation_matrix(a, b, c, nx, ny)
+        else:
+            trf = None
+
+        return (in_x, in_y), (out_x, out_y), trf
 
     def generate_triangulation(self, in_coords, out_coords, resolution):
         a, b, c, d, _ = self.geometry(out_coords)

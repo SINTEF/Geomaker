@@ -75,6 +75,7 @@ class ExporterDialog(QDialog):
     FORMATS = [
         ('png', {'png'}, 'Portable Network Graphics (PNG)'),
         ('jpeg', {'jpg', 'jpeg'}, 'Joint Photographic Experts Group (JPEG)'),
+        ('tiff', {'tif', 'tiff'}, 'Georeferenced Tagged Image File Format (GeoTIFF)'),
         ('g2', {'g2'}, 'GoTools B-Splines (G2)'),
         ('stl', {'stl'}, 'Stereolithography (STL)'),
         ('vtk', {'vtk'}, 'Visualization Toolkit Legacy (VTK)'),
@@ -232,6 +233,10 @@ class ExporterDialog(QDialog):
         return self.FORMATS[self.ui.formats.currentIndex()][1]
 
     @property
+    def rectangularize(self):
+        return export.requires_rectangle(self.format)
+
+    @property
     def image_mode(self):
         return export.is_image_format(self.format)
 
@@ -241,14 +246,16 @@ class ExporterDialog(QDialog):
 
     def project_changed(self):
         self.ui.colormaps.setEnabled(self.color_maps_enabled)
+        self.ui.invertmap.setEnabled(self.color_maps_enabled)
 
     def format_changed(self):
-        self.ui.exterior_bnd.setEnabled(self.image_mode)
-        self.ui.interior_bnd.setEnabled(self.image_mode)
-        self.ui.no_rot.setEnabled(self.image_mode)
-        self.ui.north_rot.setEnabled(self.image_mode)
-        self.ui.free_rot.setEnabled(self.image_mode)
+        self.ui.exterior_bnd.setEnabled(self.rectangularize)
+        self.ui.interior_bnd.setEnabled(self.rectangularize)
+        self.ui.no_rot.setEnabled(self.rectangularize)
+        self.ui.north_rot.setEnabled(self.rectangularize)
+        self.ui.free_rot.setEnabled(self.rectangularize)
         self.ui.colormaps.setEnabled(self.color_maps_enabled)
+        self.ui.invertmap.setEnabled(self.color_maps_enabled)
         self.ui.textures.setEnabled(export.supports_texture(self.format))
         self.ui.structured.setEnabled(export.supports_structured_choice(self.format))
 
@@ -305,10 +312,10 @@ class ExporterDialog(QDialog):
 
     def browse(self):
         filters = [
-            'Images (*.png *.jpg *.jpeg)',
+            'Images (*.png *.jpg *.jpeg *.tif *.tiff)',
             'GoTools (*.g2)',
             'Stereolithography (*.stl)'
-            'Visualization Toolkit (*.vtk *.vtu)'
+            'Visualization Toolkit (*.vtk *.vtu *.vts)'
         ]
         filename, selected_filter = QFileDialog.getSaveFileName(
             self, 'Save file', self.ui.filename.currentText(),
@@ -355,15 +362,11 @@ class ExporterDialog(QDialog):
                 'export-zero-sea': self.ui.zero_sea_level.isChecked(),
                 'export-textures': self.ui.textures.isChecked(),
                 'export-structured': self.ui.structured.isChecked(),
+                'export-colormap-invert': self.ui.invertmap.isChecked(),
+                'export-colormap': self.colormap,
+                'export-boundary-mode': self.boundary_mode,
+                'export-rotation-mode': self.rotation_mode,
             })
-
-            if self.image_mode:
-                data.update({
-                    'export-colormap-invert': self.ui.invertmap.isChecked(),
-                    'export-colormap': self.colormap,
-                    'export-boundary-mode': self.boundary_mode,
-                    'export-rotation-mode': self.rotation_mode,
-                })
 
     def done(self, result):
         self.threadmanager.close()

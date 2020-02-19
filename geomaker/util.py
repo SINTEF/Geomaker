@@ -267,3 +267,29 @@ def bilinear_coords(x, y, w, s, rx, ry):
     il = np.floor(xl).astype(int)
     jl = np.floor(yl).astype(int)
     return xl, yl, il, jl
+
+
+def transformation_matrix(a, b, c, nx, ny):
+    """Compute a 4x4 affine transformation matrix that maps an image
+    coordinate system of size nx, ny onto the rectangle spanned by
+    lower-left corner A, top-left corner B and top-right corner C.
+    Pixels are treated as areas, and the corners are pixel centers.
+    """
+
+    A = np.array([
+        [0.5,      0.5,      1.0, 0.0,      0.0,      0.0],
+        [0.0,      0.0,      0.0, 0.5,      0.5,      1.0],
+        [nx - 0.5, 0.5,      1.0, 0.0,      0.0,      0.0],
+        [0.0,      0.0,      0.0, nx - 0.5, 0.5,      1.0],
+        [0.5,      ny - 0.5, 1.0, 0.0,      0.0,      0.0],
+        [0.0,      0.0,      0.0, 0.5,      ny - 0.5, 1.0],
+    ])
+    b = np.hstack([b, c, a])
+
+    coeffs = np.linalg.solve(A, b)
+    return np.array([
+        [coeffs[0], coeffs[1], 0.0, coeffs[2]],
+        [coeffs[3], coeffs[4], 0.0, coeffs[5]],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ])
