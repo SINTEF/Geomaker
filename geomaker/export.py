@@ -23,7 +23,7 @@ def has_support(fmt):
     return True
 
 def supports_texture(fmt):
-    return fmt in ('vtk', 'vtu')
+    return fmt in ('vtk', 'vtu', 'vts')
 
 def supports_structured_choice(fmt):
     return fmt in ('vtk',)
