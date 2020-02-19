@@ -142,7 +142,10 @@ class ThreadManager(QObject):
     def errored(self, info):
         traceback.print_exception(*info)
         _, exception, _ = info
-        QMessageBox.critical(self._parent, 'Error', str(exception))
+        QMessageBox.critical(
+            self._parent, 'Error',
+            f'{exception.__class__.__name__}: {exception}'
+        )
 
         self.cleanup()
 
