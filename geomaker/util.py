@@ -256,3 +256,14 @@ def verify_geotiff(filename):
         assert metadata['ProjectedCSTypeGeoKey'] == 25833   # UTM33N
         assert metadata['ProjLinearUnitsGeoKey'] == geodb.Linear.Meter
         assert metadata['VerticalUnitsGeoKey'] == geodb.Linear.Meter
+
+
+def bilinear_coords(x, y, w, s, rx, ry):
+    """Compute bilinear reference coordinates for interpolation
+    purposes.
+    """
+    xl = (x - w) / rx
+    yl = (y - s) / ry
+    il = np.floor(xl).astype(int)
+    jl = np.floor(yl).astype(int)
+    return xl, yl, il, jl

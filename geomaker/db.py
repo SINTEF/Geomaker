@@ -449,37 +449,25 @@ class DataFile(DeclarativeBase):
 
         # SW
         m = np.where((w <= x) & (x < e + rx) & (s <= y) & (y < n + ry) & (np.bitwise_and(mask, SW) == 0))
-        xl = (x[m] - w)/rx
-        yl = (y[m] - s)/ry
-        il = np.floor(xl).astype(int)
-        jl = np.floor(yl).astype(int)
+        xl, yl, il, jl = util.bilinear_coords(x[m], y[m], w, s, rx, ry)
         data[m] += refdata[il, jl] * ((1 - (xl - il)) * (1 - (yl - jl)))[:, np.newaxis]
         mask[m] = np.bitwise_or(mask[m], SW)
 
         # SE
         m = np.where((w - rx <= x) & (x < e) & (s <= y) & (y < n + ry) & (np.bitwise_and(mask, SE) == 0))
-        xl = (x[m] - w)/rx
-        yl = (y[m] - s)/ry
-        il = np.floor(xl).astype(int)
-        jl = np.floor(yl).astype(int)
+        xl, yl, il, jl = util.bilinear_coords(x[m], y[m], w, s, rx, ry)
         data[m] += refdata[il+1, jl] * ((xl - il) * (1 - (yl - jl)))[:, np.newaxis]
         mask[m] = np.bitwise_or(mask[m], SE)
 
         # NE
         m = np.where((w - rx <= x) & (x < e) & (s - ry <= y) & (y < n) & (np.bitwise_and(mask, NE) == 0))
-        xl = (x[m] - w)/rx
-        yl = (y[m] - s)/ry
-        il = np.floor(xl).astype(int)
-        jl = np.floor(yl).astype(int)
+        xl, yl, il, jl = util.bilinear_coords(x[m], y[m], w, s, rx, ry)
         data[m] += refdata[il+1, jl+1] * ((xl - il) * (yl - jl))[:, np.newaxis]
         mask[m] = np.bitwise_or(mask[m], NE)
 
         # NW
         m = np.where((w <= x) & (x < e + rx) & (s - ry <= y) & (y < n) & (np.bitwise_and(mask, NW) == 0))
-        xl = (x[m] - w)/rx
-        yl = (y[m] - s)/ry
-        il = np.floor(xl).astype(int)
-        jl = np.floor(yl).astype(int)
+        xl, yl, il, jl = util.bilinear_coords(x[m], y[m], w, s, rx, ry)
         data[m] += refdata[il, jl+1] * ((1 - (xl - il)) * (yl - jl))[:, np.newaxis]
         mask[m] = np.bitwise_or(mask[m], NW)
 
