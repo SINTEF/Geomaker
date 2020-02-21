@@ -216,7 +216,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         right = np.max(out_x)
         down = np.min(out_y)
         up = np.max(out_y)
-        uvcoords = np.stack([(out_x - left) / (right - left), (out_y - down) / (up - down)], axis=1)
+        uvcoords = np.stack([(out_x - left) / (right - left), (out_y - down) / (up - down)], axis=out_x.ndim)
         manager.increment_progress()
 
     manager.report_message('Generating data')
