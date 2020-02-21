@@ -255,7 +255,6 @@ def verify_geotiff(filename):
         assert metadata['GeogPrimeMeridianLongGeoKey'] == 0
         assert metadata['ProjectedCSTypeGeoKey'] == 25833   # UTM33N
         assert metadata['ProjLinearUnitsGeoKey'] == geodb.Linear.Meter
-        assert metadata['VerticalUnitsGeoKey'] == geodb.Linear.Meter
 
 
 def bilinear_coords(x, y, w, s, rx, ry):
