@@ -89,7 +89,7 @@ def to_latlon(point, coords):
         zonenum = int(coords[3:-1])
         zoneletter = coords[-1].upper()
         lat, lon = utm.to_latlon(
-            point[0], point[1], zone_number=zonenum, zone_letter=zoneletter
+            point[0], point[1], zone_number=zonenum, zone_letter=zoneletter, strict=False
         )
     elif coords == 'spherical-mercator':
         x, y = point
