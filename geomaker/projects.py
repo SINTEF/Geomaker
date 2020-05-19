@@ -62,12 +62,13 @@ class TiledImageModel(Project):
 
     supports_email = False
     supports_dedicated = False
-    zoomlevels = (2, 16)
+    zoomlevels = (2, 20)
     datatype = 'geoimage'
     ndims = 3
 
-    def __init__(self, key, name):
+    def __init__(self, key, name, url):
         super().__init__(key, name, 'spherical-mercator')
+        self.url = url
 
     def create_job(self, coords, zoom, dedicated):
         assert dedicated == False

@@ -33,6 +33,10 @@ from sqlalchemy.ext.declarative import declarative_base
 DeclarativeBase = declarative_base()
 
 
+NIB_URL = 'https://kartverket.maplytic.no/tile/_nib/{zoom}/{x}/{y}.jpeg'
+TOPO4_URL = 'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4&zoom={zoom}&x={x}&y={y}'
+
+
 PROJECTS = IndexedOrderedDict([
     ('DTM50', projects.DigitalHeightModel(key='DTM50', name='Terrain model (50 m)')),
     ('DTM10', projects.DigitalHeightModel(key='DTM10', name='Terrain model (10 m)')),
@@ -40,7 +44,8 @@ PROJECTS = IndexedOrderedDict([
     ('DOM50', projects.DigitalHeightModel(key='DOM50', name='Object model (50 m)')),
     ('DOM10', projects.DigitalHeightModel(key='DOM10', name='Object model (10 m)')),
     ('DOM1',  projects.DigitalHeightModel(key='DOM1',  name='Object model (1 m)')),
-    ('NIB',   projects.TiledImageModel(key='NIB', name='Norge i bilder')),
+    ('NIB',   projects.TiledImageModel(key='NIB', name='Norge i bilder', url=NIB_URL)),
+    ('TOPO4', projects.TiledImageModel(key='TOPO4', name='Karverket Topo4', url=TOPO4_URL)),
 ])
 
 filesystem.create_directories(project.key for project in PROJECTS.values())
