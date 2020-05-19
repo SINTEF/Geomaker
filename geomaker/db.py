@@ -493,7 +493,7 @@ class GeoImage(DataFile):
     __mapper_args__ = {'polymorphic_identity': 'geoimage'}
 
     def as_array(self):
-        raw = np.array(Image.open(self.filename))
+        raw = np.array(Image.open(self.filename).convert('RGB'))
         return raw.transpose((1,0,2))[:,::-1,:]
 
     @property
