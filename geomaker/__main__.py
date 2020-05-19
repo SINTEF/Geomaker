@@ -266,13 +266,13 @@ class ExporterDialog(QDialog):
 
     def coords_changed(self):
         # Very basic conversion between degrees and meters:
-        # originally, a meter was defined as one 10000th of the
+        # originally, a kilometer was defined as one 10000th of the
         # distance between the equator and the pole, so a degree of
         # latitude is roughly 10000/90 meters.
         if self.coords_unit == '°' and self.ui.resolution.suffix() == 'm':
-            self.ui.resolution.setValue(self.ui.resolution.value() / 10000 * 90)
+            self.ui.resolution.setValue(self.ui.resolution.value() / 10_000_000 * 90)
         elif self.coords_unit == 'm' and self.ui.resolution.suffix() == '°':
-            self.ui.resolution.setValue(self.ui.resolution.value() / 90 * 10000)
+            self.ui.resolution.setValue(self.ui.resolution.value() / 90 * 10_000_000)
         self.update_resolution_suffix()
 
     def colormap_changed(self):
