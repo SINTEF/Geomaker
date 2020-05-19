@@ -82,10 +82,14 @@ class TiledImageModel(Project):
 
         filenames = []
         for x, y in tiles:
-            url = f'https://kartverket.maplytic.no/tile/_nib/{zoom}/{x}/{y}.jpeg'
-            r = requests.get(url)
-            if r.status_code != 200:
-                continue
+            url = self.url.format(zoom=zoom, x=x, y=y)
+            for _ in range(10):
+                r = requests.get(url)
+                if r.status_code == 200:
+                    break
+            else:
+                print('failed', x, y, zoom, url)
+
             filename = filesystem.project_file(self.key, f'{zoom}-{x}-{y}.jpeg')
             with open(filename, 'wb') as f:
                 f.write(r.content)
