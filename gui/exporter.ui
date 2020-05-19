@@ -1549,7 +1549,7 @@
               <string>m</string>
              </property>
              <property name="decimals">
-              <number>5</number>
+              <number>8</number>
              </property>
              <property name="maximum">
               <double>1000.000000000000000</double>

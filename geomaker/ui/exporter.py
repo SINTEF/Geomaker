@@ -576,7 +576,7 @@ class Ui_Exporter(object):
         self.label_5.setObjectName("label_5")
         self.gridLayout_4.addWidget(self.label_5, 0, 0, 1, 1)
         self.resolution = QtWidgets.QDoubleSpinBox(self.widget_2)
-        self.resolution.setDecimals(5)
+        self.resolution.setDecimals(8)
         self.resolution.setMaximum(1000.0)
         self.resolution.setSingleStep(0.1)
         self.resolution.setObjectName("resolution")
