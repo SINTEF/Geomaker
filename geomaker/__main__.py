@@ -60,13 +60,19 @@ class JSInterface(QObject):
     # Emitted whenever a polygon was deleted by leaflet
     polygon_deleted = pyqtSignal(int)
 
-    # Every possible signal signature (with an added str in front)
-    # must be listed here.  This function is the only point of
-    # interaction visible from Javascript for emitting events.
-    @pyqtSlot(str, int)
-    @pyqtSlot(str, int, str)
     def emit(self, name, *args):
         getattr(self, name).emit(*args)
+
+    # Every possible signal signature (with an added str in front)
+    # must be listed here.  These functions are the only points of
+    # interaction visible from Javascript for emitting events.
+    @pyqtSlot(str, int, str)
+    def emit_is(self, name, *args):
+        self.emit(name, *args)
+
+    @pyqtSlot(str, int)
+    def emit_i(self, name, *args):
+        self.emit(name, *args)
 
 
 class ExporterDialog(QDialog):
