@@ -30,7 +30,7 @@ setup(
         'alembic',
         'area',
         'bidict',
-        'indexed.py',
+        'indexed',
         'humanfriendly',
         'matplotlib',
         'numpy',
