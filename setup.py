@@ -30,6 +30,7 @@ setup(
         'alembic',
         'area',
         'bidict',
+        'imagecodecs',
         'indexed',
         'humanfriendly',
         'matplotlib',
