@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>793</width>
-    <height>505</height>
+    <height>533</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -1763,6 +1763,13 @@
                   <widget class="QRadioButton" name="true_geometry">
                    <property name="text">
                     <string>True geometry</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="axis_align">
+                   <property name="text">
+                    <string>Align to axis</string>
                    </property>
                   </widget>
                  </item>

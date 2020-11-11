@@ -314,14 +314,14 @@ class Polygon(DeclarativeBase):
         _, actual_area, theta = self._rectangularize(mode, rotate, coords)
         return abs(actual_area - reference_area) / reference_area, theta
 
-    def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None):
+    def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None, axis_align=False):
         # Establish the corner points in the target coordinate system,
         # so that we can compute the resolution in each direction
         if mode == 'actual':
             assert self.npts == 4
             a, b, c, d, _ = self.geometry(out_coords)
         else:
-            (a, d, c, b, _), _, _ = self._rectangularize(mode, rotate, out_coords)
+            (a, d, c, b, _), _, theta = self._rectangularize(mode, rotate, out_coords)
 
         # Compute parametric arrays in x and y with the correct lengths
         width = np.linalg.norm(c - b)
@@ -339,6 +339,12 @@ class Polygon(DeclarativeBase):
         # Convert to input coordinates
         in_x, in_y = util.to_latlon((out_x, out_y), out_coords)
         in_x, in_y = util.from_latlon((in_x, in_y), in_coords)
+
+        if True:
+            out_x, out_y = (
+                np.cos(theta) * out_x - np.sin(theta) * out_y,
+                np.cos(theta) * out_y + np.sin(theta) * out_x,
+            )
 
         # Compute transformation matrix in case geometry has been rectangularized
         if mode != 'actual':

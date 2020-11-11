@@ -181,7 +181,8 @@ def export(polygon, project, manager, boundary_mode='exterior',
            rotation_mode='none', coords='utm33n', resolution=None,
            maxpts=None, format='png', structured=False,
            colormap='Terrain', invert=False, texture=False,
-           zero_sea_level=True, filename=None, directory=None):
+           zero_sea_level=True, filename=None, directory=None,
+           axis_align=False):
 
     # Sanitize parameters
     image_mode = is_image_format(format)
@@ -200,6 +201,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         (in_x, in_y), (out_x, out_y), trf = polygon.generate_meshgrid(
             boundary_mode, rotation_mode, in_coords=project.coords,
             out_coords=coords, resolution=resolution, maxpts=maxpts,
+            axis_align=axis_align,
         )
     else:
         (in_x, in_y), (out_x, out_y), tri = polygon.generate_triangulation(

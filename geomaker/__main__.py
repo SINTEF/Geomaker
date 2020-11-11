@@ -136,6 +136,7 @@ class ExporterDialog(QDialog):
         self.ui.textures.setChecked(data.get('export-textures', True))
         self.boundary_mode = data.get('export-boundary-mode', 'interior')
         self.rotation_mode = data.get('export-rotation-mode', 'north')
+        self.axis_align = data.get('export-axis-align', False)
         self.coords = data.get('export-coords', 'utm33n')
         self.colormap = data.get('export-colormap', 'Terrain')
         self.ui.invertmap.setChecked(data.get('export-colormap-invert', False))
@@ -200,6 +201,10 @@ class ExporterDialog(QDialog):
             self.ui.north_rot.setChecked(True)
         else:
             self.ui.free_rot.setChecked(True)
+
+    @property
+    def axis_align(self):
+        return self.ui.axis_align.isChecked()
 
     @property
     def coords(self):
@@ -375,6 +380,7 @@ class ExporterDialog(QDialog):
                 'export-colormap': self.colormap,
                 'export-boundary-mode': self.boundary_mode,
                 'export-rotation-mode': self.rotation_mode,
+                'export-axis-align': self.axis_align,
             })
 
     def done(self, result):
@@ -396,6 +402,7 @@ class ExporterDialog(QDialog):
             project=self.project,
             boundary_mode=self.boundary_mode,
             rotation_mode=self.rotation_mode,
+            axis_align=self.axis_align,
             coords=self.coords,
             resolution=self.ui.resolution.value(),
             format=self.format,
