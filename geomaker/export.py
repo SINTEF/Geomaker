@@ -189,9 +189,6 @@ def export(polygon, project, manager, boundary_mode='exterior',
         texture = False
     if not supports_structured_choice(format):
         structured = is_structured_format(format)
-    if not requires_rectangle(format):
-        boundary_mode = 'actual'
-        rotation_mode = 'none'
 
     if format == 'tiff' and coords != 'utm33n':
         raise ValueError('GeoTIFF output for other formats than UTM33N is not supported')

@@ -169,7 +169,9 @@ class ExporterDialog(QDialog):
 
     @property
     def boundary_mode(self):
-        if self.ui.interior_bnd.isChecked():
+        if self.ui.true_geometry.isChecked():
+            return 'actual'
+        elif self.ui.interior_bnd.isChecked():
             return 'interior'
         return 'exterior'
 
@@ -177,8 +179,10 @@ class ExporterDialog(QDialog):
     def boundary_mode(self, value):
         if value == 'interior':
             self.ui.interior_bnd.setChecked(True)
-        else:
+        elif value == 'exterior':
             self.ui.exterior_bnd.setChecked(True)
+        else:
+            self.ui.true_geometry.setChecked(True)
 
     @property
     def rotation_mode(self):
@@ -255,15 +259,14 @@ class ExporterDialog(QDialog):
         self.ui.invertmap.setEnabled(self.color_maps_enabled)
 
     def format_changed(self):
-        self.ui.exterior_bnd.setEnabled(self.rectangularize)
-        self.ui.interior_bnd.setEnabled(self.rectangularize)
-        self.ui.no_rot.setEnabled(self.rectangularize)
-        self.ui.north_rot.setEnabled(self.rectangularize)
-        self.ui.free_rot.setEnabled(self.rectangularize)
+        self.ui.true_geometry.setEnabled(not self.rectangularize)
         self.ui.colormaps.setEnabled(self.color_maps_enabled)
         self.ui.invertmap.setEnabled(self.color_maps_enabled)
         self.ui.textures.setEnabled(export.supports_texture(self.format))
         self.ui.structured.setEnabled(export.supports_structured_choice(self.format))
+
+        if self.rectangularize and self.ui.true_geometry.isChecked():
+            self.ui.interior_bnd.setChecked(True)
 
         filename = Path(self.ui.filename.currentText())
         if filename.suffix[1:] not in self.format_suffixes:
