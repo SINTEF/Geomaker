@@ -206,6 +206,10 @@ class ExporterDialog(QDialog):
     def axis_align(self):
         return self.ui.axis_align.isChecked()
 
+    @axis_align.setter
+    def axis_align(self, value):
+        self.ui.axis_align.setChecked(value)
+
     @property
     def coords(self):
         return self.COORDS[self.ui.coordinates.currentIndex()][0]
