@@ -320,9 +320,9 @@ class ExporterDialog(QDialog):
             return
         pctg, theta = result
         if self.boundary_mode == 'interior':
-            self.ui.fitwarning.setText(f'{100*pctg:.2f}% shortfall, rotated {theta*180/np.pi:.2f}°')
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% shortfall, rotated {theta*180/np.pi:.5f}°')
         else:
-            self.ui.fitwarning.setText(f'{100*pctg:.2f}% overshoot, rotated {theta*180/np.pi:.2f}°')
+            self.ui.fitwarning.setText(f'{100*pctg:.2f}% overshoot, rotated {theta*180/np.pi:.5f}°')
 
     def browse(self):
         filters = [
