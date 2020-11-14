@@ -329,6 +329,10 @@ class Polygon(DeclarativeBase):
         i = np.argmin([sum(k) for k in [a,b,c,d]])
         a, b, c, d = [a,b,c,d][i:] + [a,b,c,d][:i]
 
+        # Require points to be in negative rotation order
+        if np.cross(b-a, c-b) > 0:
+            b, d = d, b
+
         # Compute parametric arrays in x and y with the correct lengths
         width = np.linalg.norm(c - b)
         height = np.linalg.norm(b - a)
