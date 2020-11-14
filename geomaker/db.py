@@ -324,6 +324,11 @@ class Polygon(DeclarativeBase):
         else:
             (a, d, c, b, _), _, theta = self._rectangularize(mode, rotate, out_coords)
 
+        # Reorder points so that the lower left point (smallest sum of
+        # coordinates) becomes the origin of the parametrization
+        i = np.argmin([sum(k) for k in [a,b,c,d]])
+        a, b, c, d = [a,b,c,d][i:] + [a,b,c,d][:i]
+
         # Compute parametric arrays in x and y with the correct lengths
         width = np.linalg.norm(c - b)
         height = np.linalg.norm(b - a)
