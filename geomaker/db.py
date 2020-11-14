@@ -320,6 +320,7 @@ class Polygon(DeclarativeBase):
         if mode == 'actual':
             assert self.npts == 4
             a, b, c, d, _ = self.geometry(out_coords)
+            theta = 0.0
         else:
             (a, d, c, b, _), _, theta = self._rectangularize(mode, rotate, out_coords)
 
