@@ -6,7 +6,7 @@ PYRCC_FLAGS ?=
 INDIR = gui
 OUTDIR = geomaker/ui
 
-GUI_FILES = interface.ui thumbnail.ui jobdialog.ui exporter.ui
+GUI_FILES = interface.ui thumbnail.ui jobdialog.ui exporter.ui polygon.ui
 RESOURCE_FILE = ${INDIR}/resources.qrc
 RESOURCE_OUT = ${OUTDIR}/resources_rc.py
 

@@ -317,6 +317,7 @@ class Polygon(DeclarativeBase):
     def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None, axis_align=False):
         # Establish the corner points in the target coordinate system,
         # so that we can compute the resolution in each direction
+        print(list(self.geometry(out_coords)))
         if mode == 'actual':
             assert self.npts == 4
             a, b, c, d, _ = self.geometry(out_coords)
@@ -829,7 +830,10 @@ class Database(metaclass=util.SingletonMeta):
         """Create a new polygon with a given name and leaflet.js internal ID.
         The 'data' argument is a GeoJSON object in string form.
         """
-        points = json.loads(data)['geometry']['coordinates'][0]
+        if isinstance(data, str):
+            points = json.loads(data)['geometry']['coordinates'][0]
+        else:
+            points = data + [data[0]]
 
         poly = Polygon(name=name)
         for x, y in points:
