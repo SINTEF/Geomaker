@@ -143,6 +143,7 @@ class ExporterDialog(QDialog):
         self.colormap = data.get('export-colormap', 'Terrain')
         self.ui.invertmap.setChecked(data.get('export-colormap-invert', False))
         self.ui.structured.setChecked(data.get('export-structured', False))
+        self.offset = (data.get('export-offset-origin-x', 0), data.get('export-offset-origin-y', 0))
 
         if self.ui.filename.currentText().strip() == '':
             self.ui.filename.setEditText(poly.name)
@@ -158,6 +159,7 @@ class ExporterDialog(QDialog):
         self.ui.okbtn.clicked.connect(self.accept)
         self.ui.cancelbtn.clicked.connect(self.reject)
         self.ui.refreshbtn.clicked.connect(self.recompute)
+        self.ui.offsetbtn.clicked.connect(self.recompute_offset)
 
         # Trigger some basic validation
         self.colormap_changed()
@@ -211,6 +213,15 @@ class ExporterDialog(QDialog):
     @axis_align.setter
     def axis_align(self, value):
         self.ui.axis_align.setChecked(value)
+
+    @property
+    def offset(self):
+        return self.ui.offsetx.value(), self.ui.offsety.value()
+
+    @offset.setter
+    def offset(self, value):
+        self.ui.offsetx.setValue(value[0])
+        self.ui.offsety.setValue(value[1])
 
     @property
     def coords(self):
@@ -330,6 +341,9 @@ class ExporterDialog(QDialog):
         else:
             self.ui.fitwarning.setText(f'{100*pctg:.2f}% overshoot, rotated {theta*180/np.pi:.5f}°')
 
+    def recompute_offset(self):
+        self.offset = self.poly.optimal_offset(self.coords)
+
     def browse(self):
         filters = [
             'Images (*.png *.jpg *.jpeg *.tif *.tiff)',
@@ -387,6 +401,8 @@ class ExporterDialog(QDialog):
                 'export-boundary-mode': self.boundary_mode,
                 'export-rotation-mode': self.rotation_mode,
                 'export-axis-align': self.axis_align,
+                'export-offset-origin-x': self.offset[0],
+                'export-offset-origin-y': self.offset[1],
             })
 
     def done(self, result):
@@ -417,6 +433,7 @@ class ExporterDialog(QDialog):
             invert=self.ui.invertmap.isChecked(),
             texture=self.ui.textures.isChecked(),
             zero_sea_level=self.ui.zero_sea_level.isChecked(),
+            offset_origin=self.offset,
             filename=self.ui.filename.currentText(),
         )
 

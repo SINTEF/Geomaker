@@ -182,7 +182,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
            maxpts=None, format='png', structured=False,
            colormap='Terrain', invert=False, texture=False,
            zero_sea_level=True, filename=None, directory=None,
-           axis_align=False):
+           axis_align=False, offset_origin=False):
 
     # Sanitize parameters
     image_mode = is_image_format(format)
@@ -217,6 +217,10 @@ def export(polygon, project, manager, boundary_mode='exterior',
         up = np.max(out_y)
         uvcoords = np.stack([(out_x - left) / (right - left), (out_y - down) / (up - down)], axis=out_x.ndim)
         manager.increment_progress()
+
+    if offset_origin:
+        out_x -= offset_origin[0]
+        out_y -= offset_origin[1]
 
     manager.report_message('Generating data')
     data = polygon.interpolate(project, in_x, in_y)

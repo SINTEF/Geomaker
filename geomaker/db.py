@@ -109,6 +109,16 @@ class Polygon(DeclarativeBase):
         for pta, ptb in zip(a, islice(b, 1, None)):
             yield (pta, ptb)
 
+    def optimal_offset(self, coords='latlon'):
+        points = list(self.geometry(coords))
+        cx = (min(x for x, _ in points) + max(x for x, _ in points)) / 2
+        cy = (min(y for _, y in points) + min(y for _, y in points)) / 2
+
+        # Round to nearest 1000
+        cx = round(cx / 1000) * 1000
+        cy = round(cy / 1000) * 1000
+        return cx, cy
+
     @property
     def npts(self):
         """Order of polygon (number of vertices)."""
@@ -317,7 +327,6 @@ class Polygon(DeclarativeBase):
     def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None, axis_align=False):
         # Establish the corner points in the target coordinate system,
         # so that we can compute the resolution in each direction
-        print(list(self.geometry(out_coords)))
         if mode == 'actual':
             assert self.npts == 4
             a, b, c, d, _ = self.geometry(out_coords)
