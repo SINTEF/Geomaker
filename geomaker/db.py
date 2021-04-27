@@ -314,14 +314,25 @@ class Polygon(DeclarativeBase):
         _, actual_area, theta = self._rectangularize(mode, rotate, coords)
         return abs(actual_area - reference_area) / reference_area, theta
 
-    def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None):
+    def generate_meshgrid(self, mode, rotate, in_coords, out_coords, resolution=None, maxpts=None, axis_align=False):
         # Establish the corner points in the target coordinate system,
         # so that we can compute the resolution in each direction
+        print(list(self.geometry(out_coords)))
         if mode == 'actual':
             assert self.npts == 4
             a, b, c, d, _ = self.geometry(out_coords)
+            theta = 0.0
         else:
-            (a, d, c, b, _), _, _ = self._rectangularize(mode, rotate, out_coords)
+            (a, d, c, b, _), _, theta = self._rectangularize(mode, rotate, out_coords)
+
+        # Reorder points so that the lower left point (smallest sum of
+        # coordinates) becomes the origin of the parametrization
+        i = np.argmin([sum(k) for k in [a,b,c,d]])
+        a, b, c, d = [a,b,c,d][i:] + [a,b,c,d][:i]
+
+        # Require points to be in negative rotation order
+        if np.cross(b-a, c-b) > 0:
+            b, d = d, b
 
         # Compute parametric arrays in x and y with the correct lengths
         width = np.linalg.norm(c - b)
@@ -339,6 +350,12 @@ class Polygon(DeclarativeBase):
         # Convert to input coordinates
         in_x, in_y = util.to_latlon((out_x, out_y), out_coords)
         in_x, in_y = util.from_latlon((in_x, in_y), in_coords)
+
+        if True:
+            out_x, out_y = (
+                np.cos(theta) * out_x - np.sin(theta) * out_y,
+                np.cos(theta) * out_y + np.sin(theta) * out_x,
+            )
 
         # Compute transformation matrix in case geometry has been rectangularized
         if mode != 'actual':
@@ -813,7 +830,10 @@ class Database(metaclass=util.SingletonMeta):
         """Create a new polygon with a given name and leaflet.js internal ID.
         The 'data' argument is a GeoJSON object in string form.
         """
-        points = json.loads(data)['geometry']['coordinates'][0]
+        if isinstance(data, str):
+            points = json.loads(data)['geometry']['coordinates'][0]
+        else:
+            points = data + [data[0]]
 
         poly = Polygon(name=name)
         for x, y in points:

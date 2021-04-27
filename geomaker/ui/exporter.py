@@ -2,18 +2,16 @@
 
 # Form implementation generated from reading ui file 'gui/exporter.ui'
 #
-# Created by: PyQt5 UI code generator 5.14.1
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
-
 from PyQt5 import QtCore, QtGui, QtWidgets
-
 
 class Ui_Exporter(object):
     def setupUi(self, Exporter):
         Exporter.setObjectName("Exporter")
-        Exporter.resize(793, 461)
+        Exporter.resize(793, 533)
         self.gridLayout_2 = QtWidgets.QGridLayout(Exporter)
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.gridLayout = QtWidgets.QGridLayout()
@@ -121,6 +119,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.WindowText, brush)
@@ -166,6 +167,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(57, 79, 103))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.WindowText, brush)
@@ -211,6 +215,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.PlaceholderText, brush)
         self.refreshbtn.setPalette(palette)
         font = QtGui.QFont()
         font.setBold(True)
@@ -278,6 +285,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.WindowText, brush)
@@ -323,6 +333,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(119, 20, 20))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.WindowText, brush)
@@ -368,6 +381,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.PlaceholderText, brush)
         self.cancelbtn.setPalette(palette)
         font = QtGui.QFont()
         font.setBold(True)
@@ -432,6 +448,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.WindowText, brush)
@@ -477,6 +496,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Inactive, QtGui.QPalette.PlaceholderText, brush)
         brush = QtGui.QBrush(QtGui.QColor(57, 105, 11))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.WindowText, brush)
@@ -522,6 +544,9 @@ class Ui_Exporter(object):
         brush = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         brush.setStyle(QtCore.Qt.SolidPattern)
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.ToolTipText, brush)
+        brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 128))
+        brush.setStyle(QtCore.Qt.NoBrush)
+        palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.PlaceholderText, brush)
         self.okbtn.setPalette(palette)
         font = QtGui.QFont()
         font.setBold(True)
@@ -605,6 +630,9 @@ class Ui_Exporter(object):
         self.free_rot = QtWidgets.QRadioButton(self.widget_5)
         self.free_rot.setObjectName("free_rot")
         self.verticalLayout_2.addWidget(self.free_rot)
+        self.widget_9 = QtWidgets.QWidget(self.widget_5)
+        self.widget_9.setObjectName("widget_9")
+        self.verticalLayout_2.addWidget(self.widget_9)
         self.gridLayout_5.addWidget(self.widget_5, 0, 1, 1, 1)
         self.widget_6 = QtWidgets.QWidget(self.widget_4)
         self.widget_6.setMinimumSize(QtCore.QSize(0, 20))
@@ -620,6 +648,12 @@ class Ui_Exporter(object):
         self.exterior_bnd = QtWidgets.QRadioButton(self.widget_6)
         self.exterior_bnd.setObjectName("exterior_bnd")
         self.verticalLayout.addWidget(self.exterior_bnd)
+        self.true_geometry = QtWidgets.QRadioButton(self.widget_6)
+        self.true_geometry.setObjectName("true_geometry")
+        self.verticalLayout.addWidget(self.true_geometry)
+        self.axis_align = QtWidgets.QCheckBox(self.widget_6)
+        self.axis_align.setObjectName("axis_align")
+        self.verticalLayout.addWidget(self.axis_align)
         self.fitwarning = QtWidgets.QLabel(self.widget_6)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
@@ -683,6 +717,9 @@ class Ui_Exporter(object):
         self.free_rot.setText(_translate("Exporter", "Free rotation"))
         self.interior_bnd.setText(_translate("Exporter", "Largest interior rectangle"))
         self.exterior_bnd.setText(_translate("Exporter", "Smallest exterior rectangle (bounding box)"))
+        self.true_geometry.setText(_translate("Exporter", "True geometry"))
+        self.axis_align.setText(_translate("Exporter", "Align to axis"))
         self.invertmap.setText(_translate("Exporter", "Invert color map"))
         self.structured.setText(_translate("Exporter", "Structured mesh"))
+
 from . import resources_rc
