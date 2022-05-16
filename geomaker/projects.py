@@ -49,11 +49,14 @@ class DigitalHeightModel(Project):
             'NHM': 1,                # National altitude models
         }
 
-        code, response = util.make_request('startExport', params)
-        if 'Error'in response:
-            return response['Error']
-        elif not response.get('Success', False):
-            return 'Unknown error'
+        try:
+            code, response = util.make_request('startExport', params)
+            if 'Error'in response:
+                return 'Received error: ' + response['Error']
+            elif not response.get('Success', False):
+                return 'Received error: ' + str(response.get('ErrorMessage', 'Unknown error'))
+        except Exception as e:
+            return 'Error making request: ' + str(e)
 
         return response['JobID']
 
