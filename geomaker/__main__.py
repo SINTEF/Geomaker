@@ -1,3 +1,6 @@
+import os
+os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'
+
 from contextlib import contextmanager
 from functools import partial
 from os.path import dirname, realpath, join
