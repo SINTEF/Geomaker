@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from itertools import chain
+import shutil
 
 import toml
 import xdg
@@ -21,7 +22,7 @@ def create_directories(projects):
     )
     for directory in directories:
         if not directory.exists():
-            directory.mkdir()
+            directory.mkdir(parents=True)
 
 
 def project_file(project, filename):
