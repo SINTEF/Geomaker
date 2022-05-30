@@ -261,7 +261,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
             grid.SetDimensions(*out_x.shape[::-1], 1)
         else:
             ncells = len(tri)
-            cellarray = np.concatenate([3*np.ones((ncells, 1), dtype=int), tri], axis=1)
+            cellarray = np.concatenate([3*np.ones((ncells, 1), dtype=int), tri], axis=1, dtype=vtknp.ID_TYPE_CODE)
             cells = vtk.vtkCellArray()
             cells.SetCells(ncells, vtknp.numpy_to_vtkIdTypeArray(cellarray.ravel()))
             grid = vtk.vtkUnstructuredGrid()
