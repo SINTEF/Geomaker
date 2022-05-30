@@ -68,7 +68,7 @@ fail to install from PyPi.
 
 The following packages are optional, for generating various output:
 
-- numpy-stl (for saving STL meshes)
+- numpy-stl and triangle (for saving STL meshes)
 - splipy (for producing B-Spline output)
 - vtk (for VTU and VTK format)
 

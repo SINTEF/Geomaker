@@ -1,5 +1,6 @@
 import ctypes as ct
 import hashlib
+import triangle
 from pathlib import Path
 
 from matplotlib import cm as colormap
@@ -334,33 +335,7 @@ class TriangulateIO(ct.Structure):
     ]
 
 
-def triangulate(points, segments, max_area=None, verbose=False, library='libtriangle-1.6.so'):
-    lib = ct.cdll.LoadLibrary(library)
-    triangulate = lib.triangulate
-    triangulate.argtypes = [
-        ct.c_char_p,
-        ct.POINTER(TriangulateIO),
-        ct.POINTER(TriangulateIO),
-        ct.POINTER(TriangulateIO),
-    ]
-
-    free = lib.trifree
-    free.argtypes = [ct.c_void_p]
-
-    inpoints = (ct.c_double * points.size)()
-    inpoints[:] = list(points.flat)
-
-    insegments = (ct.c_int * segments.size)()
-    insegments[:] = list(segments.flat)
-
-    inmesh = TriangulateIO(
-        inpoints, None, None, len(points), 0,
-        None, None, None, None, 0, 3, 0,
-        insegments, None, len(segments),
-        None, 0, None, 0, None, None, None, 0
-    )
-
-    outmesh = TriangulateIO()
+def triangulate(points, segments, max_area=None, verbose=False):
 
     options = 'pzjq'
     if verbose:
@@ -370,29 +345,6 @@ def triangulate(points, segments, max_area=None, verbose=False, library='libtria
     if max_area:
         options += f'a{max_area}'
 
-    triangulate(options.encode(), ct.byref(inmesh), ct.byref(outmesh), None)
+    mesh = triangle.triangulate({'vertices':points, 'segments':segments}, options)
 
-    npts = outmesh.numberofpoints
-    outpoints = np.zeros((npts, 2))
-    outpoints.flat[:] = outmesh.pointlist[:npts*2]
-
-    nelems = outmesh.numberoftriangles
-    outelements = np.zeros((nelems, 3), dtype=int)
-    outelements.flat[:] = outmesh.trianglelist[:nelems*3]
-
-    free(outmesh.pointlist)
-    free(outmesh.pointattributelist)
-    free(outmesh.pointmarkerlist)
-    free(outmesh.trianglelist)
-    free(outmesh.triangleattributelist)
-    free(outmesh.trianglearealist)
-    free(outmesh.neighborlist)
-    free(outmesh.segmentlist)
-    free(outmesh.segmentmarkerlist)
-    free(outmesh.holelist)
-    free(outmesh.regionlist)
-    free(outmesh.edgelist)
-    free(outmesh.edgemarkerlist)
-    free(outmesh.normlist)
-
-    return outpoints, outelements
+    return np.array(mesh['vertices'].tolist()), np.array(mesh['triangles'].tolist())
