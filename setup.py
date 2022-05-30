@@ -23,7 +23,7 @@ setup(
     },
     extras_require={
         'Splines': ['Splipy'],
-        'STL': ['numpy-stl'],
+        'STL': ['numpy-stl', 'triangle'],
         'VTK': ['vtk'],
     },
     install_requires=[
