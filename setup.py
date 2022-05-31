@@ -24,7 +24,7 @@ setup(
     extras_require={
         'Splines': ['Splipy'],
         'STL': ['numpy-stl', 'triangle'],
-        'VTK': ['vtk'],
+        'VTK': ['vtk', 'triangle'],
     },
     install_requires=[
         'alembic',
