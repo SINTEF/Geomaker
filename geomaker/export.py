@@ -24,7 +24,7 @@ def has_support(fmt):
     return True
 
 def supports_texture(fmt):
-    return fmt in ('vtk', 'vtu', 'vts')
+    return fmt in ('vtk', 'vtu', 'vts', 'obj')
 
 def supports_structured_choice(fmt):
     return fmt in ('vtk',)
@@ -252,7 +252,7 @@ def export(polygon, project, manager, boundary_mode='exterior',
         mesh.vectors[:,:,1] = out_y[tri]
         mesh.vectors[:,:,2] = data[tri,0]
         mesh.save(filename)
-    elif format in ('vtk', 'vtu', 'vts'):
+    elif format in ('vtk', 'vtu', 'vts', 'obj'):
         import vtk
         import vtk.util.numpy_support as vtknp
 
@@ -280,6 +280,12 @@ def export(polygon, project, manager, boundary_mode='exterior',
             writer = vtk.vtkXMLStructuredGridWriter()
         elif format == 'vtu':
             writer = vtk.vtkXMLUnstructuredGridWriter()
+        elif format == 'obj':
+            writer = vtk.vtkOBJWriter()
+            geofilter = vtk.vtkGeometryFilter()
+            geofilter.SetInputData(grid)
+            geofilter.Update()
+            grid = geofilter.GetOutput()
         else:
             writer = vtk.vtkStructuredGridWriter() if structured else vtk.vtkUnstructuredGridWriter()
 
