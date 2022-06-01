@@ -92,6 +92,7 @@ class ExporterDialog(QDialog):
         ('vtk', {'vtk'}, 'Visualization Toolkit Legacy (VTK)'),
         ('vtu', {'vtu'}, 'Visualization Toolkit Unstructured (VTU)'),
         ('vts', {'vts'}, 'Visualization Toolkit Structured (VTS)'),
+        ('obj', {'obj'}, 'Wavefront Object (OBJ)')
     ]
 
     COORDS = [
@@ -351,8 +352,9 @@ class ExporterDialog(QDialog):
         filters = [
             'Images (*.png *.jpg *.jpeg *.tif *.tiff)',
             'GoTools (*.g2)',
-            'Stereolithography (*.stl)'
-            'Visualization Toolkit (*.vtk *.vtu *.vts)'
+            'Stereolithography (*.stl)',
+            'Visualization Toolkit (*.vtk *.vtu *.vts)',
+            'Wavefront Object (*.obj)',
         ]
         filename, selected_filter = QFileDialog.getSaveFileName(
             self, 'Save file', self.ui.filename.currentText(),
