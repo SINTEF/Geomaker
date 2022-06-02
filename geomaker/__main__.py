@@ -65,6 +65,9 @@ class JSInterface(QObject):
     # Emitted whenever a polygon was deleted by leaflet
     polygon_deleted = pyqtSignal(int)
 
+    # Emitted whenever the zoom level changes
+    zoom_changed = pyqtSignal(int)
+
     def emit(self, name, *args):
         getattr(self, name).emit(*args)
 
@@ -453,7 +456,7 @@ class ExporterDialog(QDialog):
 class JobDialog(QDialog):
     """A dialog window for starting a new job."""
 
-    def __init__(self, poly, *args, **kwargs):
+    def __init__(self, poly, *args, default_zoom=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.poly = poly
 
@@ -464,6 +467,9 @@ class JobDialog(QDialog):
         self.ui.projectlist.setModel(ProjectsModel())
         self.ui.projectlist.selectionModel().selectionChanged.connect(self.project_changed)
         self.ui.zoomslider.valueChanged.connect(self.zoom_changed)
+
+        if default_zoom is not None:
+            self.ui.zoomslider.setValue(default_zoom)
 
         self.ui.okbtn.clicked.connect(self.accept)
         self.ui.cancelbtn.clicked.connect(self.reject)
@@ -629,6 +635,9 @@ class GUI(Ui_MainWindow):
         # Project tab page widgets, one persistent object for each project
         self._project_tabs = {}
 
+        # Set via events fired from JavaScript
+        self.current_zoom_level = None
+
         # This class creates its own main window widget
         self.main = QMainWindow()
         self.setupUi(self.main)
@@ -651,6 +660,7 @@ class GUI(Ui_MainWindow):
         self.js_interface.polygon_double_clicked.connect(self.webview_double_clicked)
         self.js_interface.polygon_edited.connect(self.webview_polygon_edited)
         self.js_interface.polygon_deleted.connect(self.webview_polygon_deleted)
+        self.js_interface.zoom_changed.connect(self.webview_zoom_changed)
 
         # Web view that exposes the interface to JS via a QWebChannel
         self.channel = QWebChannel()
@@ -817,6 +827,9 @@ class GUI(Ui_MainWindow):
     def webview_polygon_deleted(self, lfid):
         Database().delete(lfid)
 
+    def webview_zoom_changed(self, zoomlevel):
+        self.current_zoom_level = zoomlevel
+
     def delete_current_polygon(self):
         if self.poly:
             lfid = self.poly.lfid
@@ -845,7 +858,7 @@ class GUI(Ui_MainWindow):
     def start_new_job(self):
         if self.poly is None:
             return
-        dialog = JobDialog(self.poly)
+        dialog = JobDialog(self.poly, default_zoom=self.current_zoom_level)
         retval = dialog.exec_()
 
         if retval == QDialog.Accepted:

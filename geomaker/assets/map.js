@@ -136,6 +136,12 @@ function initialize() {
             }
         });
 
+        map.on('zoomend', function (event) {
+            if (typeof Interface != 'undefined') {
+                Interface.emit_i('zoom_changed', map.getZoom());
+            }
+        });
+
         map.on('movestart', function (event) { moving = true; })
         map.on('moveend', function (event) { moving = false; })
 
