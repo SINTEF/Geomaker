@@ -212,11 +212,11 @@ def export(polygon, project, manager, boundary_mode='exterior',
 
     if texture:
         manager.report_message('Generating texture coordinates')
-        left = np.min(out_x)
-        right = np.max(out_x)
-        down = np.min(out_y)
-        up = np.max(out_y)
-        uvcoords = np.stack([(out_x - left) / (right - left), (out_y - down) / (up - down)], axis=out_x.ndim)
+        left = np.min(in_x)
+        right = np.max(in_x)
+        down = np.min(in_y)
+        up = np.max(in_y)
+        uvcoords = np.stack([(in_x - left) / (right - left), (in_y - down) / (up - down)], axis=out_x.ndim)
         manager.increment_progress()
 
     if offset_origin:
