@@ -58,22 +58,31 @@ function initialize() {
 
     // Control for choosing which layers to show
     L.control.layers({
-        'Kartverket Topo4': L.tileLayer(
-            'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4&zoom={z}&x={x}&y={y}'
+        'Kartverket Topo': L.tileLayer(
+            'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'
         ).addTo(map),
-        'Kartverket Grunnkart': L.tileLayer(
-            'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart&zoom={z}&x={x}&y={y}'
+        'Kartverket Topo raster': L.tileLayer(
+            'https://cache.kartverket.no/v1/wmts/1.0.0/toporaster/default/webmercator/{z}/{y}/{x}.png'
         ),
-        'Kartverket Terreng': L.tileLayer(
-            'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=terreng_norgeskart&zoom={z}&x={x}&y={y}'
+        'Kartverket Topo gray': L.tileLayer(
+            'https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png'
         ),
-        'Karverket Gr\u00E5': L.tileLayer(
-            'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart_graatone&zoom={z}&x={x}&y={y}'
-        ),
-        'Kartverket Enkelt': L.tileLayer(
-            'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=egk&zoom={z}&x={x}&y={y}'
-        ),
-        'Norge i bilder': L.tileLayer('https://kartverket.maplytic.no/tile/_nib/{z}/{x}/{y}.jpeg'),
+        // 'Kartverket Topo4': L.tileLayer(
+        //     'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4&zoom={z}&x={x}&y={y}'
+        // ),
+        // 'Kartverket Grunnkart': L.tileLayer(
+        //     'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart&zoom={z}&x={x}&y={y}'
+        // ),
+        // 'Kartverket Terreng': L.tileLayer(
+        //     'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=terreng_norgeskart&zoom={z}&x={x}&y={y}'
+        // ),
+        // 'Karverket Gr\u00E5': L.tileLayer(
+        //     'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart_graatone&zoom={z}&x={x}&y={y}'
+        // ),
+        // 'Kartverket Enkelt': L.tileLayer(
+        //     'https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=egk&zoom={z}&x={x}&y={y}'
+        // ),
+        // 'Norge i bilder': L.tileLayer('https://kartverket.maplytic.no/tile/_nib/{z}/{x}/{y}.jpeg'),
         'OpenStreetMap': L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
         'OpenTopoMap': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
         'Google Roads': L.tileLayer('http://mt0.google.com/maps/vt?lyrs=m@189&gl=cn&x={x}&y={y}&z={z}'),

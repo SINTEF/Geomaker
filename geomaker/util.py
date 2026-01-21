@@ -36,7 +36,6 @@ def make_request(endpoint, params):
     url = f'https://hoydedata.no/laserservices/rest/{endpoint}.ashx?request={params}'
     response = requests.get(url, verify=False)
     if response.status_code != 200:
-        print(response.text, file=sys.stderr)
         raise Exception(f'HTTP status code {response.status_code}. See stderr for more information.')
     return response.status_code, json.loads(response.text)
 
