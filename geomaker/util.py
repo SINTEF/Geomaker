@@ -13,7 +13,7 @@ from pygeotile.tile import Tile as PyGeoTile
 import requests
 import utm
 import tifffile as tif
-import tifffile.tifffile_geodb as geodb
+import tifffile.geodb as geodb
 
 
 class SingletonMeta(type):

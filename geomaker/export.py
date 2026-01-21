@@ -3,7 +3,7 @@ import hashlib
 import triangle
 from pathlib import Path
 
-from matplotlib import cm as colormap
+import matplotlib
 import numpy as np
 
 from .asynchronous import async_job
@@ -142,14 +142,15 @@ COLORMAPS = {
 
 def iter_map_categories():
     for category in CATEGORIZED_MAPS:
-        filtered_keys = [key for key, name in category['entries'].items() if name in colormap.cmap_d]
+        filtered_keys = [key for key, name in category['entries'].items() if name in matplotlib.colormaps]
         yield category['title'], filtered_keys
 
 def get_colormap(name, invert=False):
     name = COLORMAPS[name]
     if invert:
         name += '_r'
-    return getattr(colormap, name)
+    return matplotlib.colormaps[name]
+    # return getattr(colormap, name)
 
 def preview_colormap(name, res=100, invert=False):
     data = np.linspace(0, 1, res)[np.newaxis, :]
